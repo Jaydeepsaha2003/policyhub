@@ -1,0 +1,86 @@
+name: Build PolicyHub installers
+
+# Runs on every push to main and on every git tag like v0.1.0.
+# Pushing a tag also creates a GitHub Release with the installers attached.
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  workflow_dispatch:    # adds a manual "Run workflow" button in the Actions tab
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: windows
+          - os: macos-latest
+            artifact: macos
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          # electron-builder will rebuild native modules (better-sqlite3) for
+          # the target Electron ABI via the postinstall hook.
+          npm_config_build_from_source: 'true'
+
+      - name: Package (Windows)
+        if: matrix.os == 'windows-latest'
+        run: npm run package:win
+        env:
+          # Skip code signing — produces an unsigned .exe.
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Package (macOS)
+        if: matrix.os == 'macos-latest'
+        run: npm run package:mac
+        env:
+          # Skip code signing — produces an unsigned .dmg.
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: PolicyHub-${{ matrix.artifact }}
+          path: |
+            release/*.exe
+            release/*.dmg
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Show downloaded files
+        run: ls -R artifacts
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/PolicyHub-windows/*.exe
+            artifacts/PolicyHub-macos/*.dmg
+          generate_release_notes: true
+          draft: false
+          prerelease: false
