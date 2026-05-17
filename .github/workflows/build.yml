@@ -29,12 +29,15 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      # node-gyp (used when better-sqlite3 has no prebuilt binary) requires
+      # Python's distutils module, which was removed in Python 3.12+.
+      # Pin to 3.11 so the macOS / Windows runners use a compatible Python.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Install dependencies
         run: npm ci
-        env:
-          # electron-builder will rebuild native modules (better-sqlite3) for
-          # the target Electron ABI via the postinstall hook.
-          npm_config_build_from_source: 'true'
 
       - name: Package (Windows)
         if: matrix.os == 'windows-latest'
