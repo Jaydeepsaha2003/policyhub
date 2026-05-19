@@ -21,6 +21,8 @@ const api = {
     create: (input: unknown) => invoke<string>(IPC.policiesCreate, input),
     update: (id: string, input: unknown) => invoke(IPC.policiesUpdate, id, input),
     remove: (id: string) => invoke(IPC.policiesDelete, id),
+    syncMaturity: (id: string) =>
+      invoke<{ created: number; removed: number }>(IPC.policiesSyncMaturity, id),
   },
   payments: {
     listByPolicy: (policyId: string) => invoke(IPC.paymentsListByPolicy, policyId),
@@ -45,11 +47,34 @@ const api = {
     upcoming: () => invoke(IPC.remindersUpcoming),
     sendNow: () => invoke(IPC.remindersSendNow),
   },
+  bulk: {
+    downloadTemplate: () => invoke(IPC.bulkDownloadTemplate),
+    importTemplate: () => invoke(IPC.bulkImportTemplate),
+  },
+  repayments: {
+    list: (filters?: unknown) => invoke(IPC.repaymentsList, filters),
+    createBatch: (input: unknown) => invoke(IPC.repaymentsCreateBatch, input),
+    markReceived: (input: unknown) => invoke(IPC.repaymentsMarkReceived, input),
+    cancel: (id: string) => invoke(IPC.repaymentsCancel, id),
+    remove: (id: string) => invoke(IPC.repaymentsDelete, id),
+    downloadTemplate: () => invoke(IPC.repaymentsDownloadTemplate),
+    importTemplate: () => invoke(IPC.repaymentsImportTemplate),
+  },
+  attachments: {
+    list: (policyId: string) => invoke(IPC.attachmentsList, policyId),
+    add: (policyId: string) => invoke(IPC.attachmentsAdd, policyId),
+    pick: () => invoke(IPC.attachmentsPick),
+    commitPaths: (input: { policyId: string; paths: string[] }) =>
+      invoke(IPC.attachmentsCommitPaths, input),
+    remove: (id: string) => invoke(IPC.attachmentsRemove, id),
+    open: (id: string) => invoke(IPC.attachmentsOpen, id),
+  },
   app: {
     quit: () => invoke(IPC.appQuit),
     setLoginItem: (enabled: boolean) => invoke(IPC.appSetLoginItem, enabled),
     backupDb: () => invoke(IPC.appBackupDb),
     exportJson: () => invoke(IPC.appExportJson),
+    resetData: () => invoke<{ reset: boolean }>(IPC.appResetData),
   },
 };
 

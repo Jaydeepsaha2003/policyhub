@@ -33,6 +33,16 @@ export const getRawSqlite = () => {
   return _sqlite!;
 };
 
+export const closeDb = () => {
+  try {
+    _sqlite?.close();
+  } catch (err) {
+    console.error('[db] close failed', err);
+  }
+  _sqlite = null;
+  _db = null;
+};
+
 // Inline schema bootstrap (CREATE TABLE IF NOT EXISTS).
 // In production you'd run Drizzle migrations; this keeps the app self-installing.
 const applySchema = (sqlite: Database.Database) => {
@@ -59,6 +69,9 @@ const applySchema = (sqlite: Database.Database) => {
       agent_name TEXT,
       agent_contact TEXT,
       status TEXT NOT NULL DEFAULT 'active',
+      maturity_type TEXT NOT NULL DEFAULT 'lumpsum',
+      maturity_frequency TEXT,
+      maturity_account_details TEXT,
       notes TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -76,6 +89,8 @@ const applySchema = (sqlite: Database.Database) => {
       penalty_amount INTEGER NOT NULL DEFAULT 0,
       late_fee INTEGER NOT NULL DEFAULT 0,
       payment_method TEXT,
+      payment_source TEXT,
+      payment_source_name TEXT,
       receipt_no TEXT,
       notes TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -122,6 +137,39 @@ const applySchema = (sqlite: Database.Database) => {
 
     INSERT OR IGNORE INTO settings (id) VALUES (1);
 
+    CREATE TABLE IF NOT EXISTS repayments (
+      id TEXT PRIMARY KEY,
+      policy_id TEXT REFERENCES policies(id) ON DELETE SET NULL,
+      title TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      expected_date TEXT NOT NULL,
+      frequency TEXT NOT NULL DEFAULT 'one_time',
+      installment_no INTEGER NOT NULL DEFAULT 1,
+      status TEXT NOT NULL DEFAULT 'pending',
+      received_date TEXT,
+      received_amount INTEGER,
+      received_source TEXT,
+      received_source_name TEXT,
+      ref_no TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_repayments_policy ON repayments(policy_id);
+    CREATE INDEX IF NOT EXISTS idx_repayments_status_date ON repayments(status, expected_date);
+
+    CREATE TABLE IF NOT EXISTS attachments (
+      id TEXT PRIMARY KEY,
+      policy_id TEXT NOT NULL REFERENCES policies(id) ON DELETE CASCADE,
+      file_name TEXT NOT NULL,
+      stored_name TEXT NOT NULL,
+      mime_type TEXT,
+      size_bytes INTEGER NOT NULL,
+      uploaded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      description TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_attachments_policy ON attachments(policy_id);
+
     CREATE TABLE IF NOT EXISTS monthly_reminder_log (
       id TEXT PRIMARY KEY,
       sent_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -141,6 +189,11 @@ const applySchema = (sqlite: Database.Database) => {
   // Idempotent ALTERs for upgrades from earlier schema versions.
   addColumnIfMissing(sqlite, 'settings', 'reminder_days_of_month', "TEXT NOT NULL DEFAULT '[1,10,20]'");
   addColumnIfMissing(sqlite, 'settings', 'email_template_monthly', 'TEXT');
+  addColumnIfMissing(sqlite, 'policies', 'maturity_type', "TEXT NOT NULL DEFAULT 'lumpsum'");
+  addColumnIfMissing(sqlite, 'policies', 'maturity_frequency', 'TEXT');
+  addColumnIfMissing(sqlite, 'policies', 'maturity_account_details', 'TEXT');
+  addColumnIfMissing(sqlite, 'premium_payments', 'payment_source', 'TEXT');
+  addColumnIfMissing(sqlite, 'premium_payments', 'payment_source_name', 'TEXT');
 
   // Default email templates if not yet set.
   const row = sqlite

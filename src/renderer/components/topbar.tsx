@@ -17,6 +17,10 @@ const titleFor = (name: string): string => {
       return 'Payments';
     case 'reminders':
       return 'Reminders';
+    case 'valuation':
+      return 'Valuation';
+    case 'repayments':
+      return 'Repayments';
     case 'settings':
       return 'Settings';
     default:

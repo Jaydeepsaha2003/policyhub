@@ -1,4 +1,4 @@
-import { LayoutDashboard, FileText, IndianRupee, BellRing, Settings, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, FileText, IndianRupee, BellRing, Settings, ShieldCheck, Calculator, Banknote } from 'lucide-react';
 import { useRouter, type Route } from '@/lib/router';
 import { cn } from '@/lib/utils';
 
@@ -6,7 +6,9 @@ const nav: { key: Route['name']; label: string; path: string; icon: React.Compon
   { key: 'dashboard', label: 'Dashboard', path: '/', icon: LayoutDashboard },
   { key: 'policies', label: 'Policies', path: '/policies', icon: FileText },
   { key: 'payments', label: 'Payments', path: '/payments', icon: IndianRupee },
+  { key: 'repayments', label: 'Repayments', path: '/repayments', icon: Banknote },
   { key: 'reminders', label: 'Reminders', path: '/reminders', icon: BellRing },
+  { key: 'valuation', label: 'Valuation', path: '/valuation', icon: Calculator },
   { key: 'settings', label: 'Settings', path: '/settings', icon: Settings },
 ];
 

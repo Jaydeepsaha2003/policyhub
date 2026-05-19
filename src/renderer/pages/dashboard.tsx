@@ -198,9 +198,37 @@ export const DashboardPage = () => {
 
       <Card>
         <CardHeader>
-          <CardTitle>Current month — outstanding & paid</CardTitle>
+          <CardTitle>Current — outstanding & paid</CardTitle>
           <CardDescription>
-            Every installment with a due date inside this calendar month.
+            {(() => {
+              const monthStart = new Date();
+              monthStart.setDate(1);
+              const monthStartIso = monthStart.toISOString().slice(0, 10);
+              const previousOutstanding = monthRows.filter(
+                (r) => r.status !== 'paid' && r.dueDate < monthStartIso,
+              ).length;
+              const currentMonth = monthRows.filter(
+                (r) => r.dueDate >= monthStartIso || (r.status === 'paid' && (r.paidDate ?? '') >= monthStartIso),
+              ).length;
+              return (
+                <>
+                  Includes carry-forward outstandings from previous months plus
+                  this month's installments.{' '}
+                  {previousOutstanding > 0 && (
+                    <span className="font-medium text-destructive">
+                      {previousOutstanding} previous outstanding
+                      {previousOutstanding === 1 ? '' : 's'}
+                    </span>
+                  )}
+                  {previousOutstanding > 0 && currentMonth > 0 ? ' · ' : ''}
+                  {currentMonth > 0 && (
+                    <span>
+                      {currentMonth} this month
+                    </span>
+                  )}
+                </>
+              );
+            })()}
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">

@@ -55,7 +55,10 @@ export type PolicyFormInput = {
   branchName?: string;
   agentName?: string;
   agentContact?: string;
-  status?: 'active' | 'matured' | 'lapsed' | 'surrendered';
+  status?: 'active' | 'active_ppt_over' | 'matured' | 'lapsed' | 'surrendered';
+  maturityType?: 'lumpsum' | 'regular_income';
+  maturityFrequency?: 'monthly' | 'quarterly' | 'half_yearly' | 'yearly';
+  maturityAccountDetails?: string;
   notes?: string;
 };
 

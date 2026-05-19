@@ -133,6 +133,9 @@ export const PolicyDetailPage = ({ id }: { id: string }) => {
     agentName: policy.agentName ?? undefined,
     agentContact: policy.agentContact ?? undefined,
     status: policy.status,
+    maturityType: policy.maturityType ?? 'lumpsum',
+    maturityFrequency: policy.maturityFrequency ?? undefined,
+    maturityAccountDetails: policy.maturityAccountDetails ?? undefined,
     notes: policy.notes ?? undefined,
   };
 

@@ -9,6 +9,8 @@ import { PolicyFormPage } from './pages/policy-form';
 import { PolicyDetailPage } from './pages/policy-detail';
 import { PaymentsPage } from './pages/payments';
 import { RemindersPage } from './pages/reminders';
+import { ValuationPage } from './pages/valuation';
+import { RepaymentsPage } from './pages/repayments';
 import { SettingsPage } from './pages/settings';
 import { Loader2 } from 'lucide-react';
 
@@ -27,6 +29,10 @@ const PageSwitch = () => {
       return <PaymentsPage />;
     case 'reminders':
       return <RemindersPage />;
+    case 'valuation':
+      return <ValuationPage />;
+    case 'repayments':
+      return <RepaymentsPage />;
     case 'settings':
       return <SettingsPage />;
   }

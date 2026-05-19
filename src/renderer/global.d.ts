@@ -14,6 +14,7 @@ type PolicyHubApi = {
     create: (input: any) => Promise<string>;
     update: (id: string, input: any) => Promise<any>;
     remove: (id: string) => Promise<void>;
+    syncMaturity: (id: string) => Promise<{ created: number; removed: number }>;
   };
   payments: {
     listByPolicy: (policyId: string) => Promise<any[]>;
@@ -38,11 +39,48 @@ type PolicyHubApi = {
     upcoming: () => Promise<any[]>;
     sendNow: () => Promise<{ attempted: number; succeeded: number; failed: number }>;
   };
+  bulk: {
+    downloadTemplate: () => Promise<{ saved: boolean; path?: string; rowCount?: number }>;
+    importTemplate: () => Promise<{
+      picked: boolean;
+      file?: string;
+      totalRows: number;
+      updated: number;
+      skipped: number;
+      errors: { row: number; reason: string; policyNo?: string; installmentNo?: number }[];
+    }>;
+  };
+  repayments: {
+    list: (filters?: any) => Promise<any[]>;
+    createBatch: (input: any) => Promise<string[]>;
+    markReceived: (input: any) => Promise<void>;
+    cancel: (id: string) => Promise<void>;
+    remove: (id: string) => Promise<void>;
+    downloadTemplate: () => Promise<{ saved: boolean; path?: string; rowCount?: number }>;
+    importTemplate: () => Promise<{
+      picked: boolean;
+      file?: string;
+      totalRows: number;
+      updated: number;
+      skipped: number;
+      errors: { row: number; reason: string }[];
+    }>;
+  };
+  attachments: {
+    list: (policyId: string) => Promise<any[]>;
+    add: (policyId: string) => Promise<{ added: number; errors: { fileName: string; reason: string }[] } | null>;
+    pick: () => Promise<{ path: string; fileName: string; sizeBytes: number }[]>;
+    commitPaths: (input: { policyId: string; paths: string[] }) =>
+      Promise<{ added: number; errors: { fileName: string; reason: string }[] }>;
+    remove: (id: string) => Promise<void>;
+    open: (id: string) => Promise<{ opened: boolean }>;
+  };
   app: {
     quit: () => Promise<void>;
     setLoginItem: (enabled: boolean) => Promise<void>;
     backupDb: () => Promise<{ saved: boolean; path?: string }>;
     exportJson: () => Promise<{ saved: boolean; path?: string }>;
+    resetData: () => Promise<{ reset: boolean }>;
   };
 };
 

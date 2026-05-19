@@ -7,7 +7,18 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Save, Loader2, Database, Download } from 'lucide-react';
+import { Save, Loader2, Database, Download, Trash2 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 
 type SettingsView = {
@@ -288,6 +299,42 @@ export const SettingsPage = () => {
             <Download className="h-4 w-4" />
             Export all data as JSON
           </Button>
+          <div className="ml-auto">
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive">
+                  <Trash2 className="h-4 w-4" />
+                  Reset all data
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Reset all data on this device?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Every policy, premium payment, repayment, attachment, reminder log
+                    and setting will be permanently deleted. The app will quit and
+                    relaunch with an empty database — you'll go through the setup wizard
+                    again. There is no undo.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={async () => {
+                      try {
+                        await window.policyhub.app.resetData();
+                      } catch (err) {
+                        toast.error('Reset failed', { description: (err as Error).message });
+                      }
+                    }}
+                    className="bg-destructive hover:bg-destructive/90"
+                  >
+                    Yes, delete everything
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
         </CardContent>
       </Card>
 

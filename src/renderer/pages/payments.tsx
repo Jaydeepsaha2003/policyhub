@@ -5,7 +5,15 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableEmpty } from '@/components/ui/table';
-import { Download } from 'lucide-react';
+import { Download, FileDown, FileUp, Loader2 } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { formatCurrencyPaise, formatDate } from '@/lib/utils';
 import { toast } from 'sonner';
 import { MarkPaidDialog } from './mark-paid-dialog';
@@ -45,6 +53,15 @@ export const PaymentsPage = () => {
   const [to, setTo] = useState('');
   const [markId, setMarkId] = useState<string | null>(null);
   const [markDefault, setMarkDefault] = useState(0);
+  const [downloading, setDownloading] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    file?: string;
+    totalRows: number;
+    updated: number;
+    skipped: number;
+    errors: { row: number; reason: string; policyNo?: string; installmentNo?: number }[];
+  } | null>(null);
 
   const load = async () => {
     try {
@@ -76,6 +93,42 @@ export const PaymentsPage = () => {
   }, [status, policyId, from, to]);
 
   const policyMap = useMemo(() => new Map(policies.map((p) => [p.id, p])), [policies]);
+
+  const downloadTemplate = async () => {
+    setDownloading(true);
+    try {
+      const res: any = await window.policyhub.bulk.downloadTemplate();
+      if (res?.saved) {
+        toast.success('Template saved', {
+          description: `${res.rowCount ?? 0} pending/overdue installment(s) — ${res.path}`,
+        });
+      }
+    } catch (err) {
+      toast.error('Could not generate template', { description: (err as Error).message });
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const uploadTemplate = async () => {
+    setImporting(true);
+    try {
+      const res = await window.policyhub.bulk.importTemplate();
+      if (!res.picked) return;
+      setImportResult({
+        file: res.file,
+        totalRows: res.totalRows,
+        updated: res.updated,
+        skipped: res.skipped,
+        errors: res.errors,
+      });
+      await load();
+    } catch (err) {
+      toast.error('Import failed', { description: (err as Error).message });
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const exportCsv = () => {
     const header = [
@@ -161,10 +214,20 @@ export const PaymentsPage = () => {
             placeholder="To"
           />
 
-          <Button variant="outline" size="sm" className="ml-auto" onClick={exportCsv}>
-            <Download className="h-4 w-4" />
-            Export CSV
-          </Button>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={downloadTemplate} disabled={downloading}>
+              {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+              Download template
+            </Button>
+            <Button variant="outline" size="sm" onClick={uploadTemplate} disabled={importing}>
+              {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
+              Upload filled template
+            </Button>
+            <Button variant="outline" size="sm" onClick={exportCsv}>
+              <Download className="h-4 w-4" />
+              Export CSV
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
@@ -232,6 +295,48 @@ export const PaymentsPage = () => {
         onClose={() => setMarkId(null)}
         onSaved={() => load()}
       />
+
+      <Dialog open={Boolean(importResult)} onOpenChange={(o) => !o && setImportResult(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Bulk update result</DialogTitle>
+            <DialogDescription>
+              {importResult?.file ? <span className="break-all">{importResult.file}</span> : null}
+            </DialogDescription>
+          </DialogHeader>
+          {importResult && (
+            <div className="space-y-3 text-sm">
+              <div className="grid grid-cols-3 gap-3">
+                <Summary label="Updated" value={importResult.updated} color="text-emerald-600" />
+                <Summary label="Skipped" value={importResult.skipped} color="text-muted-foreground" />
+                <Summary label="Errors" value={importResult.errors.length} color="text-destructive" />
+              </div>
+              {importResult.errors.length > 0 && (
+                <div className="max-h-64 overflow-auto rounded-md border p-3 text-xs">
+                  {importResult.errors.map((e, i) => (
+                    <div key={i} className="border-b py-1 last:border-0">
+                      <span className="font-medium">Row {e.row}</span>
+                      {e.policyNo && <> · {e.policyNo}</>}
+                      {e.installmentNo !== undefined && <> · #{e.installmentNo}</>}
+                      <span className="text-destructive"> — {e.reason}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setImportResult(null)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
+
+const Summary = ({ label, value, color }: { label: string; value: number; color: string }) => (
+  <div className="rounded-md border p-3 text-center">
+    <div className={`text-2xl font-semibold ${color}`}>{value}</div>
+    <div className="text-xs text-muted-foreground">{label}</div>
+  </div>
+);

@@ -18,13 +18,30 @@ type Policy = {
   planName: string;
   sumAssured: number;
   paymentMode: string;
-  status: 'active' | 'matured' | 'lapsed' | 'surrendered';
+  status: 'active' | 'active_ppt_over' | 'matured' | 'lapsed' | 'surrendered';
+};
+
+const statusLabel = (s: Policy['status']): string => {
+  switch (s) {
+    case 'active':
+      return 'Active';
+    case 'active_ppt_over':
+      return 'Active — PPT Over';
+    case 'matured':
+      return 'Matured';
+    case 'lapsed':
+      return 'Lapsed';
+    case 'surrendered':
+      return 'Surrendered';
+  }
 };
 
 const statusVariant = (s: Policy['status']) => {
   switch (s) {
     case 'active':
       return 'success' as const;
+    case 'active_ppt_over':
+      return 'default' as const;
     case 'matured':
       return 'secondary' as const;
     case 'lapsed':
@@ -119,6 +136,7 @@ export const PoliciesPage = () => {
             <SelectContent>
               <SelectItem value="all">All status</SelectItem>
               <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="active_ppt_over">Active — PPT Over</SelectItem>
               <SelectItem value="matured">Matured</SelectItem>
               <SelectItem value="lapsed">Lapsed</SelectItem>
               <SelectItem value="surrendered">Surrendered</SelectItem>
@@ -171,7 +189,7 @@ export const PoliciesPage = () => {
                       {p.paymentMode.replace('_', '-')}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={statusVariant(p.status)}>{p.status}</Badge>
+                      <Badge variant={statusVariant(p.status)}>{statusLabel(p.status)}</Badge>
                     </TableCell>
                   </TableRow>
                 ))}

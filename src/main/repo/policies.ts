@@ -37,6 +37,10 @@ const normalize = (input: PolicyFormInput) => ({
   agentName: input.agentName?.trim() || null,
   agentContact: input.agentContact?.trim() || null,
   status: input.status ?? 'active',
+  maturityType: input.maturityType ?? 'lumpsum',
+  maturityFrequency:
+    input.maturityType === 'regular_income' ? (input.maturityFrequency ?? null) : null,
+  maturityAccountDetails: input.maturityAccountDetails?.trim() || null,
   notes: input.notes?.trim() || null,
 });
 
@@ -48,6 +52,13 @@ export const createPolicy = (input: PolicyFormInput) => {
     .values({ id, ...data })
     .run();
   regenerateInstallments(id);
+  // Auto-create maturity payout repayments. Import lazily to avoid circular deps.
+  try {
+    const { generateMaturityRepayments } = require('./repayments') as typeof import('./repayments');
+    generateMaturityRepayments(id);
+  } catch (err) {
+    console.error('[policies] maturity repayment sync failed', err);
+  }
   return id;
 };
 

@@ -35,9 +35,24 @@ export const policySchema = z
     branchName: z.string().trim().optional(),
     agentName: z.string().trim().optional(),
     agentContact: optionalPhone,
-    status: z.enum(['active', 'matured', 'lapsed', 'surrendered']).optional(),
+    status: z
+      .enum(['active', 'active_ppt_over', 'matured', 'lapsed', 'surrendered'])
+      .optional(),
+    maturityType: z.enum(['lumpsum', 'regular_income']).default('lumpsum'),
+    maturityFrequency: z
+      .enum(['monthly', 'quarterly', 'half_yearly', 'yearly'])
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
+    maturityAccountDetails: z.string().trim().optional(),
     notes: z.string().trim().optional(),
   })
+  .refine(
+    (v) => v.maturityType !== 'regular_income' || Boolean(v.maturityFrequency),
+    {
+      message: 'Frequency is required for regular-income maturity',
+      path: ['maturityFrequency'],
+    },
+  )
   .refine((v) => new Date(v.maturityDate) > new Date(v.commencementDate), {
     message: 'Maturity date must be after commencement',
     path: ['maturityDate'],

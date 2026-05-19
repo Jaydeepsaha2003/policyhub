@@ -1,6 +1,6 @@
 {
   "name": "policyhub",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Local-first desktop app for managing life, health, and general insurance policies",
   "main": "dist-electron/main/main.js",
   "author": "Merkatura",
@@ -16,6 +16,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed.ts",
+    "add-sample": "node --experimental-sqlite scripts/add-sample.mjs",
     "package": "npm run build && electron-builder -mwl --publish never",
     "package:mac": "npm run build && electron-builder --mac --x64 --publish never",
     "package:win": "npm run build && electron-builder --win --publish never",
@@ -28,6 +29,7 @@
     "better-sqlite3": "^9.6.0",
     "date-fns": "^2.30.0",
     "drizzle-orm": "^0.30.10",
+    "exceljs": "^4.4.0",
     "node-cron": "^3.0.3",
     "nodemailer": "^6.9.16",
     "uuid": "^9.0.1"
@@ -93,7 +95,12 @@
     "mac": {
       "category": "public.app-category.business",
       "target": [
-        { "target": "dmg", "arch": ["x64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "extendInfo": {
         "LSUIElement": true,
@@ -106,7 +113,12 @@
     },
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
     },
     "nsis": {
@@ -115,11 +127,18 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "PolicyHub"
+      "shortcutName": "PolicyHub",
+      "include": "build/installer.nsh",
+      "deleteAppDataOnUninstall": true
     },
     "linux": {
       "target": [
-        { "target": "AppImage", "arch": ["x64"] }
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "category": "Office"
     },

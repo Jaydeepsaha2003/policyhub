@@ -16,6 +16,8 @@ export type Route =
   | { name: 'policy-detail'; id: string }
   | { name: 'payments' }
   | { name: 'reminders' }
+  | { name: 'valuation' }
+  | { name: 'repayments' }
   | { name: 'settings' };
 
 const parse = (hash: string): Route => {
@@ -29,6 +31,8 @@ const parse = (hash: string): Route => {
   }
   if (parts[0] === 'payments') return { name: 'payments' };
   if (parts[0] === 'reminders') return { name: 'reminders' };
+  if (parts[0] === 'valuation') return { name: 'valuation' };
+  if (parts[0] === 'repayments') return { name: 'repayments' };
   if (parts[0] === 'settings') return { name: 'settings' };
   return { name: 'dashboard' };
 };

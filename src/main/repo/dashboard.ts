@@ -221,7 +221,14 @@ export const maturingPolicies = (period: Period) => {
     .all(from, to);
 };
 
-// Premiums in current calendar month (for "Current month outstanding" view).
+// "Current — outstanding & paid":
+//   - all outstanding (pending/overdue) installments whose due date is on or
+//     before the end of the current month (i.e., includes previous months'
+//     unpaid carry-forwards)
+//   - PLUS installments paid within the current calendar month
+//
+// Sort: overdue first (oldest due_date first), then pending (oldest first),
+// then paid (most recent paid_date last).
 export const currentMonthPayments = () => {
   const sqlite = getRawSqlite();
   const from = fmt(startOfMonth(new Date()));
@@ -235,8 +242,15 @@ export const currentMonthPayments = () => {
               p.policy_holder AS policyHolder, p.company_name AS companyName
          FROM premium_payments pp
          JOIN policies p ON p.id = pp.policy_id
-        WHERE pp.due_date BETWEEN ? AND ?
-        ORDER BY pp.due_date ASC`,
+        WHERE (pp.status IN ('pending','overdue') AND pp.due_date <= ?)
+           OR (pp.status = 'paid' AND pp.paid_date BETWEEN ? AND ?)
+        ORDER BY
+          CASE pp.status
+            WHEN 'overdue' THEN 0
+            WHEN 'pending' THEN 1
+            ELSE 2
+          END,
+          pp.due_date ASC`,
     )
-    .all(from, to);
+    .all(to, from, to);
 };

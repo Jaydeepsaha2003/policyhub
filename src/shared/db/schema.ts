@@ -28,10 +28,18 @@ export const policies = sqliteTable('policies', {
   agentName: text('agent_name'),
   agentContact: text('agent_contact'),
   status: text('status', {
-    enum: ['active', 'matured', 'lapsed', 'surrendered'],
+    enum: ['active', 'active_ppt_over', 'matured', 'lapsed', 'surrendered'],
   })
     .notNull()
     .default('active'),
+  // Maturity details
+  maturityType: text('maturity_type', { enum: ['lumpsum', 'regular_income'] })
+    .notNull()
+    .default('lumpsum'),
+  maturityFrequency: text('maturity_frequency', {
+    enum: ['monthly', 'quarterly', 'half_yearly', 'yearly'],
+  }),
+  maturityAccountDetails: text('maturity_account_details'),
   notes: text('notes'),
   createdAt: text('created_at')
     .notNull()
@@ -57,6 +65,8 @@ export const premiumPayments = sqliteTable('premium_payments', {
   penaltyAmount: integer('penalty_amount').notNull().default(0),
   lateFee: integer('late_fee').notNull().default(0),
   paymentMethod: text('payment_method'),
+  paymentSource: text('payment_source'),
+  paymentSourceName: text('payment_source_name'),
   receiptNo: text('receipt_no'),
   notes: text('notes'),
   createdAt: text('created_at')
@@ -137,6 +147,56 @@ export const monthlyReminderLog = sqliteTable('monthly_reminder_log', {
   success: integer('success', { mode: 'boolean' }).notNull(),
   errorMessage: text('error_message'),
 });
+
+export const repayments = sqliteTable('repayments', {
+  id: text('id').primaryKey(),
+  policyId: text('policy_id').references(() => policies.id, { onDelete: 'set null' }),
+  title: text('title').notNull(),
+  amount: integer('amount').notNull(),                   // paise
+  expectedDate: text('expected_date').notNull(),
+  frequency: text('frequency', {
+    enum: ['one_time', 'monthly', 'quarterly', 'half_yearly', 'yearly'],
+  })
+    .notNull()
+    .default('one_time'),
+  installmentNo: integer('installment_no').notNull().default(1),
+  status: text('status', {
+    enum: ['pending', 'received', 'overdue', 'cancelled'],
+  })
+    .notNull()
+    .default('pending'),
+  receivedDate: text('received_date'),
+  receivedAmount: integer('received_amount'),             // paise
+  receivedSource: text('received_source'),
+  receivedSourceName: text('received_source_name'),
+  refNo: text('ref_no'),
+  notes: text('notes'),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`(CURRENT_TIMESTAMP)`),
+  updatedAt: text('updated_at')
+    .notNull()
+    .default(sql`(CURRENT_TIMESTAMP)`),
+});
+
+export type Repayment = typeof repayments.$inferSelect;
+
+export const attachments = sqliteTable('attachments', {
+  id: text('id').primaryKey(),
+  policyId: text('policy_id')
+    .notNull()
+    .references(() => policies.id, { onDelete: 'cascade' }),
+  fileName: text('file_name').notNull(),
+  storedName: text('stored_name').notNull(),
+  mimeType: text('mime_type'),
+  sizeBytes: integer('size_bytes').notNull(),
+  uploadedAt: text('uploaded_at')
+    .notNull()
+    .default(sql`(CURRENT_TIMESTAMP)`),
+  description: text('description'),
+});
+
+export type Attachment = typeof attachments.$inferSelect;
 
 export type Policy = typeof policies.$inferSelect;
 export type NewPolicy = typeof policies.$inferInsert;
