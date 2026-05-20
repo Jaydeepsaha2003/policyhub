@@ -6,13 +6,30 @@
 ; 2. Wipe the previous user-data folder before installing the new version, so
 ;    every reinstall starts with a fresh SQLite database.
 
-; Runs *before* electron-builder's checkAppRunning step, so the app is gone by
-; the time it checks.
+; Replaces electron-builder's default checkAppRunning entirely. We don't try to
+; politely close PolicyHub via a window message (which fails for tray-resident
+; apps with no visible window) — we just force-kill every PolicyHub process by
+; image name, then sleep, then kill again to catch any restarted children.
 !macro customCheckAppRunning
   DetailPrint "Stopping any running PolicyHub process..."
-  nsExec::Exec 'taskkill /F /IM "PolicyHub.exe" /T'
-  nsExec::Exec 'taskkill /F /IM "${PRODUCT_FILENAME}.exe" /T'
-  Sleep 1500
+
+  ; Kill by image name. /F = force, /T = also kill child processes.
+  nsExec::Exec 'taskkill /F /T /IM "PolicyHub.exe"'
+  nsExec::Exec 'taskkill /F /T /IM "PolicyHub Helper.exe"'
+  nsExec::Exec 'taskkill /F /T /IM "PolicyHub Helper (GPU).exe"'
+  nsExec::Exec 'taskkill /F /T /IM "PolicyHub Helper (Renderer).exe"'
+  nsExec::Exec 'taskkill /F /T /IM "PolicyHub Helper (Plugin).exe"'
+
+  Sleep 1200
+
+  ; Second pass — anything that respawned (Electron sometimes restarts helpers).
+  nsExec::Exec 'taskkill /F /T /IM "PolicyHub.exe"'
+  nsExec::Exec 'taskkill /F /T /IM "PolicyHub Helper.exe"'
+
+  ; Belt-and-braces: WMIC kill by name in case taskkill missed something.
+  nsExec::Exec 'wmic process where name="PolicyHub.exe" call terminate'
+
+  Sleep 800
 !macroend
 
 !macro customInstall
