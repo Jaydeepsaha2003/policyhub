@@ -46,15 +46,38 @@ export const MarkPaidDialog = ({ paymentId, defaultAmount, onClose, onSaved }: P
 
   const submit = async () => {
     if (!paymentId) return;
+    if (!paidDate) {
+      toast.error('Paid date is required');
+      return;
+    }
+    if (paidDate > isoToday()) {
+      toast.error("Paid date can't be in the future");
+      return;
+    }
+    const amt = Number(paidAmount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      toast.error('Paid amount must be greater than zero');
+      return;
+    }
+    const pen = Number(penalty);
+    const late = Number(lateFee);
+    if (Number.isFinite(pen) && pen < 0) {
+      toast.error('Penalty cannot be negative');
+      return;
+    }
+    if (Number.isFinite(late) && late < 0) {
+      toast.error('Late fee cannot be negative');
+      return;
+    }
     setSaving(true);
     try {
       await window.policyhub.payments.markPaid({
         paymentId,
         paidDate,
-        paidAmount: Number(paidAmount) || 0,
+        paidAmount: amt,
         paymentMethod,
-        penaltyAmount: Number(penalty) || 0,
-        lateFee: Number(lateFee) || 0,
+        penaltyAmount: Math.max(0, pen || 0),
+        lateFee: Math.max(0, late || 0),
         receiptNo: receipt || undefined,
         notes: notes || undefined,
       });
@@ -79,7 +102,19 @@ export const MarkPaidDialog = ({ paymentId, defaultAmount, onClose, onSaved }: P
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label>Paid date</Label>
-            <Input type="date" value={paidDate} onChange={(e) => setPaidDate(e.target.value)} />
+            <Input
+              type="date"
+              value={paidDate}
+              max={isoToday()}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v && v > isoToday()) {
+                  toast.error("Paid date can't be in the future");
+                  return;
+                }
+                setPaidDate(v);
+              }}
+            />
           </div>
           <div className="space-y-1.5">
             <Label>Paid amount (₹)</Label>

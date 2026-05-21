@@ -48,10 +48,17 @@ export type DashboardOverview = {
   remindersSentLast7Days: number;
 };
 
-export const buildOverview = (period: Period): DashboardOverview => {
+export const buildOverview = (
+  period: Period,
+  customRange?: { from?: string | null; to?: string | null } | null,
+): DashboardOverview => {
   const sqlite = getRawSqlite();
   const today = fmt(new Date());
-  const { from, to } = periodRange(period);
+  const range =
+    customRange && customRange.from && customRange.to
+      ? { from: customRange.from, to: customRange.to }
+      : periodRange(period);
+  const { from, to } = range;
 
   // Flip pending → overdue first.
   sqlite
@@ -206,9 +213,16 @@ export const buildSeries = (period: Period): SeriesPoint[] => {
 };
 
 // Policies whose maturity_date falls inside the given period window.
-export const maturingPolicies = (period: Period) => {
+export const maturingPolicies = (
+  period: Period,
+  customRange?: { from?: string | null; to?: string | null } | null,
+) => {
   const sqlite = getRawSqlite();
-  const { from, to } = periodRange(period);
+  const range =
+    customRange && customRange.from && customRange.to
+      ? { from: customRange.from, to: customRange.to }
+      : periodRange(period);
+  const { from, to } = range;
   return sqlite
     .prepare(
       `SELECT id, policy_no AS policyNo, policy_holder AS policyHolder,

@@ -150,6 +150,11 @@ export type MarkReceivedInput = {
 };
 
 export const markRepaymentReceived = (input: MarkReceivedInput) => {
+  // No future dates allowed.
+  const today = format(new Date(), 'yyyy-MM-dd');
+  if (input.receivedDate && input.receivedDate > today) {
+    throw new Error("Received date can't be in the future");
+  }
   const db = getDb();
   db.update(repayments)
     .set({

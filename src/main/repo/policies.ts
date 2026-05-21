@@ -41,6 +41,11 @@ const normalize = (input: PolicyFormInput) => ({
   maturityFrequency:
     input.maturityType === 'regular_income' ? (input.maturityFrequency ?? null) : null,
   maturityAccountDetails: input.maturityAccountDetails?.trim() || null,
+  maturityBankName: input.maturityBankName?.trim() || null,
+  maturityAccountNo: input.maturityAccountNo?.trim() || null,
+  maturityIfsc: input.maturityIfsc?.trim().toUpperCase() || null,
+  maturityBranchName: input.maturityBranchName?.trim() || null,
+  maturityAccountHolder: input.maturityAccountHolder?.trim() || null,
   notes: input.notes?.trim() || null,
 });
 

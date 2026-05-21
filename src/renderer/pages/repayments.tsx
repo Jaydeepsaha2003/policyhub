@@ -40,7 +40,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { Plus, FileDown, FileUp, Loader2, Trash2 } from 'lucide-react';
+import { Plus, FileDown, FileUp, Loader2, Trash2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatCurrencyPaise, formatDate, isoToday } from '@/lib/utils';
 
@@ -235,9 +235,11 @@ export const RepaymentsPage = () => {
                   <TableHead>Frequency</TableHead>
                   <TableHead>#</TableHead>
                   <TableHead>Expected</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
+                  <TableHead className="text-right">Expected ₹</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Received</TableHead>
+                  <TableHead>Received on</TableHead>
+                  <TableHead className="text-right">Received ₹</TableHead>
+                  <TableHead>Source / Ref</TableHead>
                   <TableHead className="text-right" />
                 </TableRow>
               </TableHeader>
@@ -263,13 +265,29 @@ export const RepaymentsPage = () => {
                     </TableCell>
                     <TableCell>{statusBadge(r.status)}</TableCell>
                     <TableCell>
+                      {r.receivedDate ? (
+                        formatDate(r.receivedDate)
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {r.receivedAmount !== null ? (
+                        formatCurrencyPaise(r.receivedAmount)
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
                       {r.status === 'received' ? (
                         <div className="text-xs">
-                          <div>{formatDate(r.receivedDate)}</div>
-                          <div className="text-muted-foreground">
+                          <div>
                             {r.receivedSource ?? '—'}
                             {r.receivedSourceName ? ` · ${r.receivedSourceName}` : ''}
                           </div>
+                          {r.refNo && (
+                            <div className="text-muted-foreground">Ref: {r.refNo}</div>
+                          )}
                         </div>
                       ) : (
                         <span className="text-muted-foreground">—</span>
@@ -430,7 +448,16 @@ const AddRepaymentDialog = ({
       toast.error('Amount must be greater than zero');
       return;
     }
-    const c = frequency === 'one_time' ? 1 : Math.max(1, Number(count) || 1);
+    if (!expectedDate) {
+      toast.error('Expected date is required');
+      return;
+    }
+    const requestedCount = frequency === 'one_time' ? 1 : Number(count) || 1;
+    if (frequency !== 'one_time' && (requestedCount < 1 || requestedCount > 1000)) {
+      toast.error('Installment count must be between 1 and 1000');
+      return;
+    }
+    const c = Math.max(1, Math.min(1000, requestedCount));
     setSaving(true);
     try {
       const ids = await window.policyhub.repayments.createBatch({
@@ -578,6 +605,7 @@ const MarkReceivedDialog = ({
   const [refNo, setRefNo] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  const [pendingPremiumCount, setPendingPremiumCount] = useState<number | null>(null);
 
   useEffect(() => {
     if (repayment) {
@@ -587,17 +615,50 @@ const MarkReceivedDialog = ({
       setSourceName('');
       setRefNo('');
       setNotes('');
+      setPendingPremiumCount(null);
+
+      // For repayments tied to a policy, check if any premiums are still unpaid
+      // and surface a warning before the user records receipt of money from
+      // that policy.
+      if (repayment.policyId) {
+        (async () => {
+          try {
+            const list = (await window.policyhub.payments.listByPolicy(
+              repayment.policyId!,
+            )) as { status: string }[];
+            const unpaid = list.filter(
+              (p) => p.status === 'pending' || p.status === 'overdue',
+            ).length;
+            setPendingPremiumCount(unpaid);
+          } catch {
+            // ignore — non-blocking
+          }
+        })();
+      }
     }
   }, [repayment]);
 
   const submit = async () => {
     if (!repayment) return;
+    if (!receivedDate) {
+      toast.error('Received date is required');
+      return;
+    }
+    if (receivedDate > isoToday()) {
+      toast.error("Received date can't be in the future");
+      return;
+    }
+    const amt = Number(receivedAmount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      toast.error('Received amount must be greater than zero');
+      return;
+    }
     setSaving(true);
     try {
       await window.policyhub.repayments.markReceived({
         id: repayment.id,
         receivedDate,
-        receivedAmount: Number(receivedAmount) || 0,
+        receivedAmount: amt,
         receivedSource: source,
         receivedSourceName: sourceName || undefined,
         refNo: refNo || undefined,
@@ -628,13 +689,38 @@ const MarkReceivedDialog = ({
           </DialogDescription>
         </DialogHeader>
 
+        {pendingPremiumCount !== null && pendingPremiumCount > 0 && (
+          <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <div className="font-semibold">
+                Heads up — this policy still has {pendingPremiumCount} unpaid
+                premium installment{pendingPremiumCount === 1 ? '' : 's'}.
+              </div>
+              <div>
+                You can still record this receipt, but verify the policy's
+                premium status first (Policies → open the policy → Payment
+                timeline).
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label>Received date</Label>
             <Input
               type="date"
               value={receivedDate}
-              onChange={(e) => setReceivedDate(e.target.value)}
+              max={isoToday()}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v && v > isoToday()) {
+                  toast.error("Received date can't be in the future");
+                  return;
+                }
+                setReceivedDate(v);
+              }}
             />
           </div>
           <div className="space-y-1.5">

@@ -7,7 +7,18 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Save, Loader2, Database, Download, Trash2 } from 'lucide-react';
+import {
+  Save,
+  Loader2,
+  Database,
+  Download,
+  Trash2,
+  Cloud,
+  CloudUpload,
+  KeyRound,
+  Copy,
+  CheckCircle2,
+} from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,6 +50,10 @@ type SettingsView = {
   emailTemplateMonthly: string | null;
   startAtLogin: boolean;
   theme: 'light' | 'dark' | 'system';
+  cloudSheetUrl: string | null;
+  cloudSheetSecretSet: boolean;
+  cloudSyncOnQuit: boolean;
+  cloudLastSyncedAt: string | null;
 };
 
 export const SettingsPage = () => {
@@ -47,6 +62,9 @@ export const SettingsPage = () => {
   const [daysOfMonthText, setDaysOfMonthText] = useState('1, 10, 20');
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [cloudSecretInput, setCloudSecretInput] = useState('');
+  const [cloudTesting, setCloudTesting] = useState(false);
+  const [cloudSyncing, setCloudSyncing] = useState(false);
 
   const load = async () => {
     try {
@@ -73,6 +91,21 @@ export const SettingsPage = () => {
   const update = (patch: Partial<SettingsView>) => setS({ ...s, ...patch });
 
   const save = async () => {
+    // Validate before saving.
+    if (s.smtpPort !== null && s.smtpPort !== undefined) {
+      if (s.smtpPort < 1 || s.smtpPort > 65535) {
+        toast.error('SMTP port must be between 1 and 65535');
+        return;
+      }
+    }
+    if (s.agentEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.agentEmail)) {
+      toast.error('Agent email is not a valid email');
+      return;
+    }
+    if (s.fromEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.fromEmail)) {
+      toast.error('From email is not a valid email');
+      return;
+    }
     setSaving(true);
     try {
       const parsedDays = daysOfMonthText
@@ -92,12 +125,16 @@ export const SettingsPage = () => {
         agentEmail: s.agentEmail,
         emailTemplateMonthly: s.emailTemplateMonthly ?? '',
         startAtLogin: s.startAtLogin,
+        cloudSheetUrl: s.cloudSheetUrl,
+        cloudSyncOnQuit: s.cloudSyncOnQuit,
       };
       if (smtpPassword) payload.smtpPassword = smtpPassword;
+      if (cloudSecretInput) payload.cloudSheetSecret = cloudSecretInput;
 
       await window.policyhub.settings.update(payload);
       toast.success('Settings saved');
       setSmtpPassword('');
+      setCloudSecretInput('');
       await load();
     } catch (err) {
       toast.error('Save failed', { description: (err as Error).message });
@@ -282,6 +319,163 @@ export const SettingsPage = () => {
             <code>{'{{overdue_count}}'}</code>, <code>{'{{overdue_total}}'}</code>,{' '}
             <code>{'{{overdue_list}}'}</code>, <code>{'{{agent_name}}'}</code>
           </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Cloud className="h-5 w-5" />
+            Cloud reminders (Google Sheets)
+          </CardTitle>
+          <CardDescription>
+            Push your policy data to a Google Sheet so reminders fire from
+            Google's servers — even when this laptop is off. See{' '}
+            <code>docs/cloud-reminders/setup.md</code> for the one-time setup
+            (~10 minutes).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Field label="Apps Script Web App URL">
+            <Input
+              value={s.cloudSheetUrl ?? ''}
+              onChange={(e) => update({ cloudSheetUrl: e.target.value })}
+              placeholder="https://script.google.com/macros/s/.../exec"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              The deployment URL Google gives you after "Deploy → New deployment → Web App".
+            </p>
+          </Field>
+
+          <Field label={`Shared secret${s.cloudSheetSecretSet ? ' (already set — leave blank to keep)' : ''}`}>
+            <div className="flex gap-2">
+              <Input
+                type="password"
+                value={cloudSecretInput}
+                onChange={(e) => setCloudSecretInput(e.target.value)}
+                placeholder={s.cloudSheetSecretSet ? '••••••••' : 'Paste or generate'}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={async () => {
+                  try {
+                    const secret = await window.policyhub.cloud.generateSecret();
+                    setCloudSecretInput(secret);
+                    try {
+                      await navigator.clipboard.writeText(secret);
+                      toast.success('Secret generated and copied to clipboard', {
+                        description: 'Paste it into your Sheet → Settings tab → cell B1, then click Save settings here.',
+                      });
+                    } catch {
+                      toast.success('Secret generated', {
+                        description: 'Copy it from the field and paste into the Sheet.',
+                      });
+                    }
+                  } catch (err) {
+                    toast.error('Could not generate', {
+                      description: (err as Error).message,
+                    });
+                  }
+                }}
+              >
+                <KeyRound className="h-4 w-4" />
+                Generate
+              </Button>
+              {cloudSecretInput && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(cloudSecretInput);
+                      toast.success('Copied to clipboard');
+                    } catch {
+                      toast.error('Clipboard not available');
+                    }
+                  }}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Paste this same value into the Sheet's <code>Settings</code> tab,
+              cell <code>B1</code>. Both must match for sync to work. Stored
+              encrypted via OS keychain.
+            </p>
+          </Field>
+
+          <div className="flex items-center justify-between rounded-md border p-3">
+            <div>
+              <div className="text-sm font-medium">Auto-sync on quit</div>
+              <div className="text-xs text-muted-foreground">
+                Push the latest data to the Sheet every time you quit
+                PolicyHub from the tray.
+              </div>
+            </div>
+            <Switch
+              checked={s.cloudSyncOnQuit}
+              onCheckedChange={(c) => update({ cloudSyncOnQuit: c })}
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={cloudTesting || !s.cloudSheetUrl}
+              onClick={async () => {
+                setCloudTesting(true);
+                try {
+                  const res = await window.policyhub.cloud.test();
+                  if (res.ok) {
+                    toast.success('Cloud connection OK');
+                  } else {
+                    toast.error('Test failed', { description: res.error });
+                  }
+                } catch (err) {
+                  toast.error('Test failed', { description: (err as Error).message });
+                } finally {
+                  setCloudTesting(false);
+                }
+              }}
+            >
+              {cloudTesting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              Test connection
+            </Button>
+            <Button
+              type="button"
+              disabled={cloudSyncing || !s.cloudSheetUrl}
+              onClick={async () => {
+                setCloudSyncing(true);
+                try {
+                  const res = await window.policyhub.cloud.sync();
+                  if (res.ok) {
+                    toast.success(
+                      `Synced — ${res.counts?.policies ?? 0} policies, ${res.counts?.installments ?? 0} installments, ${res.counts?.repayments ?? 0} repayments`,
+                    );
+                    await load();
+                  } else {
+                    toast.error('Sync failed', { description: res.error });
+                  }
+                } catch (err) {
+                  toast.error('Sync failed', { description: (err as Error).message });
+                } finally {
+                  setCloudSyncing(false);
+                }
+              }}
+            >
+              {cloudSyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudUpload className="h-4 w-4" />}
+              Sync now
+            </Button>
+
+            {s.cloudLastSyncedAt && (
+              <span className="ml-auto text-xs text-muted-foreground">
+                Last synced: {new Date(s.cloudLastSyncedAt).toLocaleString()}
+              </span>
+            )}
+          </div>
         </CardContent>
       </Card>
 

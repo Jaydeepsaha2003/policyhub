@@ -86,34 +86,50 @@ type Calc = {
   paramsUsed: Params;
 };
 
-// Proportionate value: each premium installment that falls on or before the
-// valuation date contributes (treating it as paid on its due date), compounded
-// from that due date to the valuation date. Whether it was actually paid or not
-// does not matter — we're measuring the policy's accrued value as if the
-// schedule were honoured.
+// SIMPLE INTEREST valuation, matching the user's worked Excel:
+//   For each scheduled premium installment with due_date <= valuation_date:
+//     years_elapsed = months_between(due_date, val_date) / 12
+//     value_at_val_date = principal * (1 + ROI * years_elapsed)
+//   estimatedValuation = sum of those values
+//
+// Notes:
+// - "Paid or not" doesn't matter — only the schedule does.
+// - Premiums whose due_date is AFTER valuation_date are skipped (haven't
+//   contributed yet).
+// - Premium-payment-term ending doesn't need special handling — no installments
+//   exist past PPT, so they don't contribute, but the older installments keep
+//   accruing interest until the valuation date.
+// - With simple interest the compounding frequency cancels out (months/12 =
+//   quarters/4 = years/1). The freq is kept on the form for UX/labelling only.
+const monthsBetween = (from: Date, to: Date): number => {
+  // calendar-month diff with a fractional day correction so partial months
+  // still count.
+  const years = to.getFullYear() - from.getFullYear();
+  const months = to.getMonth() - from.getMonth();
+  const dayDelta = to.getDate() - from.getDate();
+  return years * 12 + months + dayDelta / 30.4375;
+};
+
 const computeValuation = (
   payments: Payment[],
   params: Params,
 ): Calc => {
   const r = Number(params.roi) / 100;
-  const n = compoundingsPerYear(params.freq);
   const valDate = new Date(params.valDate);
   let total = 0;
   let count = 0;
   let valuationPaise = 0;
   for (const p of payments) {
     const due = new Date(p.dueDate);
-    if (Number.isNaN(due.getTime()) || due > valDate) continue; // future installment — skip
-    const principalPaise = p.expectedAmount; // schedule amount, regardless of paid/not
+    if (Number.isNaN(due.getTime()) || due > valDate) continue;
+    const principalPaise = p.expectedAmount;
     total += principalPaise;
     count += 1;
-    const t =
-      (valDate.getTime() - due.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
-    if (!Number.isFinite(r) || r < 0 || t <= 0) {
+    const yearsElapsed = Math.max(0, monthsBetween(due, valDate) / 12);
+    if (!Number.isFinite(r) || r < 0 || yearsElapsed === 0) {
       valuationPaise += principalPaise;
     } else {
-      const factor = Math.pow(1 + r / n, n * t);
-      valuationPaise += principalPaise * factor;
+      valuationPaise += principalPaise * (1 + r * yearsElapsed);
     }
   }
   return {
@@ -222,16 +238,27 @@ export const ValuationPage = () => {
       toast.error('Pick at least one policy');
       return;
     }
-    // Validate every selected row's ROI
+    // Validate every selected row's ROI and valuation date.
     for (const id of selected) {
       const p = paramsFor(id);
       const r = Number(p.roi);
-      if (!Number.isFinite(r) || r < 0) {
-        toast.error(`Invalid ROI on policy ${id.slice(0, 6)}`);
+      if (!Number.isFinite(r) || r < 0 || r > 100) {
+        toast.error(`ROI must be between 0 and 100 for the selected policy`);
         return;
       }
       if (!p.valDate) {
-        toast.error(`Missing valuation date on policy ${id.slice(0, 6)}`);
+        toast.error(`Valuation date is missing for the selected policy`);
+        return;
+      }
+      const policy = policies.find((x) => x.id === id);
+      if (
+        policy &&
+        policy.commencementDate &&
+        p.valDate < policy.commencementDate
+      ) {
+        toast.error(
+          `Valuation date can't be before commencement for ${policy.policyNo}`,
+        );
         return;
       }
     }
@@ -326,14 +353,17 @@ export const ValuationPage = () => {
         </CardContent>
       </Card>
 
-      <div className="flex items-center gap-2 rounded-md border bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+      <div className="flex items-start gap-2 rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
         <Info className="h-4 w-4 shrink-0" />
-        Placeholder formula in use: every scheduled premium installment with a due date
-        on or before the valuation date contributes (whether actually paid or not). Each
-        contribution is compounded from its due date to the valuation date. The
-        "Received?" column shows whether the policy's payouts have already been received
-        — it's informational and does NOT change the math. Share your Excel calculation
-        steps to replace this.
+        <div>
+          <span className="font-medium text-foreground">Formula:</span> for each scheduled
+          premium installment with due date ≤ valuation date,{' '}
+          <code>value = principal × (1 + ROI × years_since_due)</code>. Total valuation
+          is the sum across all such installments. Whether the premium was actually paid
+          doesn't matter. "Received?" is informational only. Compounding frequency is
+          shown for context — with simple interest it cancels out (months/12 = quarters/4
+          = years/1).
+        </div>
       </div>
 
       <Card>

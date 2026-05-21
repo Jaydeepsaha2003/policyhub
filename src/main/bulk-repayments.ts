@@ -313,6 +313,21 @@ export const importRepaymentTemplate = async (): Promise<RepaymentImportResult> 
       result.errors.push({ row: r, reason: 'Received Date is required' });
       continue;
     }
+    const todayIso = format(new Date(), 'yyyy-MM-dd');
+    if (receivedDate > todayIso) {
+      result.errors.push({
+        row: r,
+        reason: "Received Date can't be in the future",
+      });
+      continue;
+    }
+    if (receivedAmt !== null && receivedAmt <= 0) {
+      result.errors.push({
+        row: r,
+        reason: 'Received Amount must be greater than zero',
+      });
+      continue;
+    }
 
     const existing = lookup.get(id) as { status: string; amount: number } | undefined;
     if (!existing) {

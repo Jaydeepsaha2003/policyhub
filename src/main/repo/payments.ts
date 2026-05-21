@@ -34,6 +34,13 @@ export const listAllPayments = (filters?: {
 };
 
 export const markPaid = (input: MarkPaidInput) => {
+  const today = format(new Date(), 'yyyy-MM-dd');
+  if (input.paidDate && input.paidDate > today) {
+    throw new Error("Paid date can't be in the future");
+  }
+  if (!Number.isFinite(input.paidAmount) || input.paidAmount <= 0) {
+    throw new Error('Paid amount must be greater than zero');
+  }
   const db = getDb();
   db.update(premiumPayments)
     .set({

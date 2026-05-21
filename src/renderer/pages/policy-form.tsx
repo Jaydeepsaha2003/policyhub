@@ -29,6 +29,16 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ArrowLeft, ArrowRight, Check } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useRouter } from '@/lib/router';
@@ -69,6 +79,11 @@ const defaults: PolicyFormValues = {
   maturityType: 'lumpsum',
   maturityFrequency: undefined,
   maturityAccountDetails: undefined,
+  maturityBankName: undefined,
+  maturityAccountNo: undefined,
+  maturityIfsc: undefined,
+  maturityBranchName: undefined,
+  maturityAccountHolder: undefined,
   notes: undefined,
 };
 
@@ -136,6 +151,7 @@ export const PolicyFormPage = ({ mode, initial, onSaved }: Props) => {
   const [saving, setSaving] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
   const [stagedFiles, setStagedFiles] = useState<StagedFile[]>([]);
+  const [sumAssuredWarning, setSumAssuredWarning] = useState<PolicyFormValues | null>(null);
 
   const form = useForm<PolicyFormValues>({
     resolver: zodResolver(policySchema),
@@ -190,6 +206,32 @@ export const PolicyFormPage = ({ mode, initial, onSaved }: Props) => {
   }, [watched.commencementDate, watched.paymentMode, watched.premiumPaymentTermYears]);
 
   const onSubmit = async (values: PolicyFormValues) => {
+    // Hard rule: PPT cannot exceed policy term.
+    if (
+      Number.isFinite(values.premiumPaymentTermYears) &&
+      Number.isFinite(values.policyTermYears) &&
+      values.premiumPaymentTermYears > values.policyTermYears
+    ) {
+      toast.error(
+        `Premium payment term (${values.premiumPaymentTermYears} yrs) can't exceed policy term (${values.policyTermYears} yrs).`,
+      );
+      return;
+    }
+    // Sum-assured rule: SA should be ≥ 10× yearly premium (IRDA Section 80C).
+    // Warn but allow override.
+    if (
+      Number.isFinite(values.sumAssured) &&
+      Number.isFinite(values.yearlyTotalPremium) &&
+      values.yearlyTotalPremium > 0 &&
+      values.sumAssured < 10 * values.yearlyTotalPremium
+    ) {
+      setSumAssuredWarning(values);
+      return;
+    }
+    await doSave(values);
+  };
+
+  const doSave = async (values: PolicyFormValues) => {
     setSaving(true);
     try {
       if (mode === 'create') {
@@ -237,11 +279,26 @@ export const PolicyFormPage = ({ mode, initial, onSaved }: Props) => {
   };
 
   const goNext = async () => {
-    const fields = STEPS[stepIndex].validate;
+    const step = STEPS[stepIndex];
+    const fields = step.validate;
     if (fields.length === 0) {
       setStepIndex((s) => Math.min(STEPS.length - 1, s + 1));
       return;
     }
+
+    // Cross-field check: PPT must be ≤ policy term. Root-level Zod refines
+    // don't fire on per-field form.trigger, so check it here too.
+    if (step.key === 'premium') {
+      const ppt = Number(watched.premiumPaymentTermYears);
+      const pt = Number(watched.policyTermYears);
+      if (Number.isFinite(ppt) && Number.isFinite(pt) && ppt > pt) {
+        toast.error(
+          `Premium payment term (${ppt} yrs) can't exceed policy term (${pt} yrs).`,
+        );
+        return;
+      }
+    }
+
     const ok = await form.trigger(fields as unknown as (keyof PolicyFormValues)[]);
     if (ok) {
       setStepIndex((s) => Math.min(STEPS.length - 1, s + 1));
@@ -374,10 +431,19 @@ export const PolicyFormPage = ({ mode, initial, onSaved }: Props) => {
         <Field
           label="Premium payment term (years)"
           required
-          error={errs.premiumPaymentTermYears?.message}
+          error={
+            errs.premiumPaymentTermYears?.message ??
+            (Number.isFinite(watched.premiumPaymentTermYears) &&
+            Number.isFinite(watched.policyTermYears) &&
+            watched.premiumPaymentTermYears > watched.policyTermYears
+              ? `PPT (${watched.premiumPaymentTermYears} yrs) can't exceed policy term (${watched.policyTermYears} yrs)`
+              : undefined)
+          }
         >
           <Input
             type="number"
+            min={1}
+            max={watched.policyTermYears || undefined}
             {...reg('premiumPaymentTermYears', { valueAsNumber: true })}
           />
         </Field>
@@ -449,17 +515,36 @@ export const PolicyFormPage = ({ mode, initial, onSaved }: Props) => {
                 </Select>
               </Field>
             )}
-            <Field
-              label="Maturity account details"
-              hint="Where the maturity amount will be paid"
-            >
-              <Textarea
-                rows={3}
-                {...reg('maturityAccountDetails')}
-                placeholder="Bank name · A/c no · IFSC · branch …"
-                className="resize-none sm:col-span-2"
-              />
-            </Field>
+          </div>
+
+          <div className="mt-4 space-y-1.5">
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+              Maturity payout account
+            </Label>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Bank name">
+                <Input {...reg('maturityBankName')} placeholder="HDFC Bank" />
+              </Field>
+              <Field label="Account holder">
+                <Input
+                  {...reg('maturityAccountHolder')}
+                  placeholder="Name on the bank account"
+                />
+              </Field>
+              <Field label="Account number">
+                <Input {...reg('maturityAccountNo')} placeholder="50100123456789" />
+              </Field>
+              <Field label="IFSC" error={errs.maturityIfsc?.message}>
+                <Input
+                  {...reg('maturityIfsc')}
+                  placeholder="HDFC0000123"
+                  style={{ textTransform: 'uppercase' }}
+                />
+              </Field>
+              <Field label="Branch name">
+                <Input {...reg('maturityBranchName')} placeholder="Salt Lake branch" />
+              </Field>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -645,6 +730,15 @@ export const PolicyFormPage = ({ mode, initial, onSaved }: Props) => {
             {saving ? 'Saving…' : 'Save changes'}
           </Button>
         </div>
+        <SumAssuredWarningDialog
+          values={sumAssuredWarning}
+          onCancel={() => setSumAssuredWarning(null)}
+          onProceed={async () => {
+            const v = sumAssuredWarning!;
+            setSumAssuredWarning(null);
+            await doSave(v);
+          }}
+        />
       </form>
     );
   }
@@ -707,7 +801,61 @@ export const PolicyFormPage = ({ mode, initial, onSaved }: Props) => {
           )}
         </div>
       </div>
+      <SumAssuredWarningDialog
+        values={sumAssuredWarning}
+        onCancel={() => setSumAssuredWarning(null)}
+        onProceed={async () => {
+          const v = sumAssuredWarning!;
+          setSumAssuredWarning(null);
+          await doSave(v);
+        }}
+      />
     </form>
+  );
+};
+
+const SumAssuredWarningDialog = ({
+  values,
+  onCancel,
+  onProceed,
+}: {
+  values: PolicyFormValues | null;
+  onCancel: () => void;
+  onProceed: () => void;
+}) => {
+  return (
+    <AlertDialog open={Boolean(values)} onOpenChange={(o) => !o && onCancel()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Sum assured looks low</AlertDialogTitle>
+          <AlertDialogDescription>
+            Under IRDA Section 80C, a policy is generally treated as
+            tax-qualifying only if{' '}
+            <span className="font-semibold">
+              Sum assured ≥ 10 × yearly premium
+            </span>
+            .{' '}
+            {values && (
+              <>
+                Your inputs give Sum assured ={' '}
+                <span className="font-mono">₹{values.sumAssured.toLocaleString('en-IN')}</span>{' '}
+                vs 10 × Yearly premium ={' '}
+                <span className="font-mono">
+                  ₹{(values.yearlyTotalPremium * 10).toLocaleString('en-IN')}
+                </span>
+                .
+              </>
+            )}{' '}
+            You can save anyway, but the policy may not qualify for tax
+            deduction.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={onCancel}>Go back & fix</AlertDialogCancel>
+          <AlertDialogAction onClick={onProceed}>Save anyway</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 };
 

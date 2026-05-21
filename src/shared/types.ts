@@ -59,6 +59,11 @@ export type PolicyFormInput = {
   maturityType?: 'lumpsum' | 'regular_income';
   maturityFrequency?: 'monthly' | 'quarterly' | 'half_yearly' | 'yearly';
   maturityAccountDetails?: string;
+  maturityBankName?: string;
+  maturityAccountNo?: string;
+  maturityIfsc?: string;
+  maturityBranchName?: string;
+  maturityAccountHolder?: string;
   notes?: string;
 };
 

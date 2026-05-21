@@ -44,6 +44,16 @@ export const policySchema = z
       .optional()
       .or(z.literal('').transform(() => undefined)),
     maturityAccountDetails: z.string().trim().optional(),
+    maturityBankName: z.string().trim().optional(),
+    maturityAccountNo: z.string().trim().optional(),
+    maturityIfsc: z
+      .string()
+      .trim()
+      .regex(/^[A-Z]{4}0[A-Z0-9]{6}$/i, 'Invalid IFSC')
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
+    maturityBranchName: z.string().trim().optional(),
+    maturityAccountHolder: z.string().trim().optional(),
     notes: z.string().trim().optional(),
   })
   .refine(

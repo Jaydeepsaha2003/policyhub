@@ -39,7 +39,12 @@ export const policies = sqliteTable('policies', {
   maturityFrequency: text('maturity_frequency', {
     enum: ['monthly', 'quarterly', 'half_yearly', 'yearly'],
   }),
-  maturityAccountDetails: text('maturity_account_details'),
+  maturityAccountDetails: text('maturity_account_details'), // legacy free-form (kept for backward compat)
+  maturityBankName: text('maturity_bank_name'),
+  maturityAccountNo: text('maturity_account_no'),
+  maturityIfsc: text('maturity_ifsc'),
+  maturityBranchName: text('maturity_branch_name'),
+  maturityAccountHolder: text('maturity_account_holder'),
   notes: text('notes'),
   createdAt: text('created_at')
     .notNull()
@@ -131,6 +136,11 @@ export const settings = sqliteTable('settings', {
     .default('system'),
   reminderDaysOfMonth: text('reminder_days_of_month').notNull().default('[1,10,20]'),
   emailTemplateMonthly: text('email_template_monthly'),
+  // Cloud reminders (Google Sheets + Apps Script)
+  cloudSheetUrl: text('cloud_sheet_url'),
+  cloudSheetSecretEncrypted: text('cloud_sheet_secret_encrypted'),
+  cloudSyncOnQuit: integer('cloud_sync_on_quit', { mode: 'boolean' }).notNull().default(false),
+  cloudLastSyncedAt: text('cloud_last_synced_at'),
 });
 
 export const monthlyReminderLog = sqliteTable('monthly_reminder_log', {

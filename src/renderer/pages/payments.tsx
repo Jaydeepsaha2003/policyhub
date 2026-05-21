@@ -29,7 +29,11 @@ type Row = {
   paidDate: string | null;
   paidAmount: number | null;
   paymentMethod: string | null;
+  paymentSource: string | null;
+  paymentSourceName: string | null;
   receiptNo: string | null;
+  penaltyAmount: number;
+  lateFee: number;
 };
 
 type PolicyLite = { id: string; policyNo: string; policyHolder: string };
@@ -243,8 +247,13 @@ export const PaymentsPage = () => {
                   <TableHead>Holder</TableHead>
                   <TableHead>#</TableHead>
                   <TableHead>Due</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
+                  <TableHead className="text-right">Expected</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Paid on</TableHead>
+                  <TableHead className="text-right">Paid amount</TableHead>
+                  <TableHead>Source</TableHead>
+                  <TableHead>Ref no</TableHead>
+                  <TableHead className="text-right">Penalty + late fee</TableHead>
                   <TableHead className="text-right" />
                 </TableRow>
               </TableHeader>
@@ -265,6 +274,46 @@ export const PaymentsPage = () => {
                         {formatCurrencyPaise(r.expectedAmount)}
                       </TableCell>
                       <TableCell>{statusBadge(r.status)}</TableCell>
+                      <TableCell>
+                        {r.paidDate ? (
+                          formatDate(r.paidDate)
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {r.paidAmount !== null ? (
+                          formatCurrencyPaise(r.paidAmount)
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {r.paymentSource || r.paymentSourceName ? (
+                          <div className="text-xs">
+                            <div>{r.paymentSource ?? '—'}</div>
+                            {r.paymentSourceName && (
+                              <div className="text-muted-foreground">
+                                {r.paymentSourceName}
+                              </div>
+                            )}
+                          </div>
+                        ) : r.paymentMethod ? (
+                          <span className="text-xs">{r.paymentMethod}</span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {r.receiptNo || <span className="text-muted-foreground">—</span>}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {r.penaltyAmount + r.lateFee > 0 ? (
+                          formatCurrencyPaise(r.penaltyAmount + r.lateFee)
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
                       <TableCell className="text-right">
                         {r.status !== 'paid' && (
                           <Button

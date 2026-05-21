@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableEmpty } from '@/components/ui/table';
-import { Plus, Search } from 'lucide-react';
+import { Plus, Search, FileSpreadsheet, Loader2 } from 'lucide-react';
 import { useRouter } from '@/lib/router';
 import { formatCurrencyPaise } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -58,6 +58,7 @@ export const PoliciesPage = () => {
   const [companyFilter, setCompanyFilter] = useState<string>('all');
   const [modeFilter, setModeFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -142,6 +143,33 @@ export const PoliciesPage = () => {
               <SelectItem value="surrendered">Surrendered</SelectItem>
             </SelectContent>
           </Select>
+          <Button
+            variant="outline"
+            disabled={exporting}
+            onClick={async () => {
+              setExporting(true);
+              try {
+                const r = await window.policyhub.policies.exportExcel();
+                if (r?.saved) {
+                  toast.success(
+                    `Exported ${r.rowCount ?? 0} policies`,
+                    { description: r.path },
+                  );
+                }
+              } catch (err) {
+                toast.error('Export failed', { description: (err as Error).message });
+              } finally {
+                setExporting(false);
+              }
+            }}
+          >
+            {exporting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FileSpreadsheet className="h-4 w-4" />
+            )}
+            Export all as Excel
+          </Button>
           <Button onClick={() => navigate('/policies/new')}>
             <Plus className="h-4 w-4" />
             New policy

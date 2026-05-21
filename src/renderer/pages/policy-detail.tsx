@@ -136,6 +136,11 @@ export const PolicyDetailPage = ({ id }: { id: string }) => {
     maturityType: policy.maturityType ?? 'lumpsum',
     maturityFrequency: policy.maturityFrequency ?? undefined,
     maturityAccountDetails: policy.maturityAccountDetails ?? undefined,
+    maturityBankName: policy.maturityBankName ?? undefined,
+    maturityAccountNo: policy.maturityAccountNo ?? undefined,
+    maturityIfsc: policy.maturityIfsc ?? undefined,
+    maturityBranchName: policy.maturityBranchName ?? undefined,
+    maturityAccountHolder: policy.maturityAccountHolder ?? undefined,
     notes: policy.notes ?? undefined,
   };
 

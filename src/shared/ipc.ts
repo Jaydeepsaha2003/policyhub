@@ -13,6 +13,7 @@ export const IPC = {
   policiesUpdate: 'policies:update',
   policiesDelete: 'policies:delete',
   policiesSyncMaturity: 'policies:syncMaturity',
+  policiesExportExcel: 'policies:exportExcel',
 
   // Payments
   paymentsListByPolicy: 'payments:listByPolicy',
@@ -60,6 +61,9 @@ export const IPC = {
   appBackupDb: 'app:backupDb',
   appExportJson: 'app:exportJson',
   appResetData: 'app:resetData',
+  cloudSync: 'cloud:sync',
+  cloudTest: 'cloud:test',
+  cloudGenerateSecret: 'cloud:generateSecret',
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];

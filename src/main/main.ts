@@ -125,7 +125,41 @@ app.on('window-all-closed', () => {
   // intentionally empty
 });
 
-app.on('before-quit', () => {
+let _syncOnQuitRunning = false;
+
+app.on('before-quit', async (event) => {
+  // Only attempt the sync once per quit cycle.
+  if (_syncOnQuitRunning) return;
+
+  try {
+    // Lazy-require so the dependency graph stays simple and a failed import
+    // never blocks quit.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const settingsModule = require('./repo/settings') as typeof import('./repo/settings');
+    const s = settingsModule.readSettings();
+    if (s.cloudSyncOnQuit && s.cloudSheetUrl && s.cloudSheetSecretSet) {
+      event.preventDefault();
+      _syncOnQuitRunning = true;
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { syncToSheet } = require('./cloud-sync') as typeof import('./cloud-sync');
+
+      // Best-effort with 15s timeout.
+      const result = await Promise.race([
+        syncToSheet(),
+        new Promise<{ ok: false; error: string }>((resolve) =>
+          setTimeout(() => resolve({ ok: false, error: 'timeout' }), 15_000),
+        ),
+      ]);
+      console.log('[quit] cloud sync result', result);
+      (app as any).isQuiting = true;
+      stopScheduler();
+      app.quit();
+      return;
+    }
+  } catch (err) {
+    console.error('[quit] sync-on-quit failed', err);
+  }
+
   (app as any).isQuiting = true;
   stopScheduler();
 });

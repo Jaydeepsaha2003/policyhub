@@ -31,6 +31,7 @@ import { MarkPaidDialog } from './mark-paid-dialog';
 import { toast } from 'sonner';
 import { PeriodToggle, type Period } from '@/components/period-toggle';
 import { BarChart } from '@/components/bar-chart';
+import { Input } from '@/components/ui/input';
 
 type Overview = {
   period: Period;
@@ -83,6 +84,9 @@ type MonthRow = {
 export const DashboardPage = () => {
   const { navigate } = useRouter();
   const [period, setPeriod] = useState<Period>('monthly');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const customRange = customFrom && customTo ? { from: customFrom, to: customTo } : null;
   const [overview, setOverview] = useState<Overview | null>(null);
   const [series, setSeries] = useState<SeriesPoint[]>([]);
   const [maturing, setMaturing] = useState<Maturing[]>([]);
@@ -93,9 +97,9 @@ export const DashboardPage = () => {
   const load = async () => {
     try {
       const [ov, s, m, mr] = await Promise.all([
-        window.policyhub.dashboard.overview(period),
+        window.policyhub.dashboard.overview(period, customRange),
         window.policyhub.dashboard.series(period),
-        window.policyhub.dashboard.maturing(period),
+        window.policyhub.dashboard.maturing(period, customRange),
         window.policyhub.dashboard.currentMonth(),
       ]);
       setOverview(ov as Overview);
@@ -110,7 +114,7 @@ export const DashboardPage = () => {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [period]);
+  }, [period, customFrom, customTo]);
 
   const today = isoToday();
   const monthStatusBadge = (r: MonthRow) => {
@@ -121,20 +125,52 @@ export const DashboardPage = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="text-sm font-semibold">Overview</div>
           <div className="text-xs text-muted-foreground">
             {overview ? (
               <>
                 {formatDate(overview.from)} – {formatDate(overview.to)}
+                {customRange ? ' · custom range' : ''}
               </>
             ) : (
               'Loading…'
             )}
           </div>
         </div>
-        <PeriodToggle value={period} onChange={setPeriod} />
+        <div className="flex flex-wrap items-center gap-2">
+          <PeriodToggle value={period} onChange={setPeriod} />
+          <div className="flex items-center gap-1 rounded-md border bg-card p-1">
+            <span className="px-1.5 text-xs text-muted-foreground">From</span>
+            <Input
+              type="date"
+              className="h-7 w-36 border-0 bg-transparent px-1 text-xs focus-visible:ring-0"
+              value={customFrom}
+              onChange={(e) => setCustomFrom(e.target.value)}
+            />
+            <span className="px-1.5 text-xs text-muted-foreground">To</span>
+            <Input
+              type="date"
+              className="h-7 w-36 border-0 bg-transparent px-1 text-xs focus-visible:ring-0"
+              value={customTo}
+              onChange={(e) => setCustomTo(e.target.value)}
+            />
+            {(customFrom || customTo) && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-xs"
+                onClick={() => {
+                  setCustomFrom('');
+                  setCustomTo('');
+                }}
+              >
+                Clear
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">

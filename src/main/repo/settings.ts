@@ -6,11 +6,15 @@ import type { Settings } from '../../shared/types';
 
 export type SettingsView = Omit<
   Settings,
-  'smtpPasswordEncrypted' | 'reminderOffsetsDays' | 'reminderDaysOfMonth'
+  | 'smtpPasswordEncrypted'
+  | 'reminderOffsetsDays'
+  | 'reminderDaysOfMonth'
+  | 'cloudSheetSecretEncrypted'
 > & {
   smtpPasswordSet: boolean;
   reminderOffsetsDays: number[];
   reminderDaysOfMonth: number[];
+  cloudSheetSecretSet: boolean;
 };
 
 export const readSettings = (): SettingsView => {
@@ -33,6 +37,7 @@ export const readSettings = (): SettingsView => {
   }
   const {
     smtpPasswordEncrypted,
+    cloudSheetSecretEncrypted,
     reminderOffsetsDays: _o,
     reminderDaysOfMonth: _d,
     ...rest
@@ -40,9 +45,16 @@ export const readSettings = (): SettingsView => {
   return {
     ...rest,
     smtpPasswordSet: Boolean(smtpPasswordEncrypted),
+    cloudSheetSecretSet: Boolean(cloudSheetSecretEncrypted),
     reminderOffsetsDays: offsets,
     reminderDaysOfMonth: daysOfMonth,
   };
+};
+
+export const readCloudSheetSecret = (): string => {
+  const db = getDb();
+  const row = db.select().from(settings).where(eq(settings.id, 1)).get();
+  return decryptSecret(row?.cloudSheetSecretEncrypted);
 };
 
 export const readSmtpPassword = (): string => {
@@ -70,6 +82,10 @@ export type SettingsUpdateInput = Partial<{
   startAtLogin: boolean;
   setupComplete: boolean;
   theme: 'light' | 'dark' | 'system';
+  cloudSheetUrl: string | null;
+  cloudSheetSecret: string | null; // plaintext from form; encrypted before save
+  cloudSyncOnQuit: boolean;
+  cloudLastSyncedAt: string | null;
 }>;
 
 export const updateSettings = (patch: SettingsUpdateInput) => {
@@ -102,6 +118,16 @@ export const updateSettings = (patch: SettingsUpdateInput) => {
   if (patch.startAtLogin !== undefined) update.startAtLogin = patch.startAtLogin;
   if (patch.setupComplete !== undefined) update.setupComplete = patch.setupComplete;
   if (patch.theme) update.theme = patch.theme;
+  if ('cloudSheetUrl' in patch) update.cloudSheetUrl = patch.cloudSheetUrl;
+  if ('cloudSheetSecret' in patch && patch.cloudSheetSecret !== undefined) {
+    update.cloudSheetSecretEncrypted = patch.cloudSheetSecret
+      ? encryptSecret(patch.cloudSheetSecret)
+      : null;
+  }
+  if ('cloudSyncOnQuit' in patch && patch.cloudSyncOnQuit !== undefined) {
+    update.cloudSyncOnQuit = patch.cloudSyncOnQuit;
+  }
+  if ('cloudLastSyncedAt' in patch) update.cloudLastSyncedAt = patch.cloudLastSyncedAt;
 
   if (Object.keys(update).length === 0) return;
   db.update(settings).set(update as any).where(eq(settings.id, 1)).run();

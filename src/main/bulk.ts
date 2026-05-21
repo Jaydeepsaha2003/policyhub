@@ -408,6 +408,44 @@ export const importTemplate = async (): Promise<ImportResult> => {
       continue;
     }
 
+    const todayIso = format(new Date(), 'yyyy-MM-dd');
+    if (paidDate > todayIso) {
+      result.errors.push({
+        row: r,
+        reason: "Paid Date can't be in the future",
+        policyNo,
+        installmentNo: installmentNoRaw ?? undefined,
+      });
+      continue;
+    }
+    if (paidAmount !== null && paidAmount <= 0) {
+      result.errors.push({
+        row: r,
+        reason: 'Paid Amount must be greater than zero',
+        policyNo,
+        installmentNo: installmentNoRaw ?? undefined,
+      });
+      continue;
+    }
+    if (penalty !== null && penalty < 0) {
+      result.errors.push({
+        row: r,
+        reason: 'Penalty cannot be negative',
+        policyNo,
+        installmentNo: installmentNoRaw ?? undefined,
+      });
+      continue;
+    }
+    if (lateFee !== null && lateFee < 0) {
+      result.errors.push({
+        row: r,
+        reason: 'Late Fee cannot be negative',
+        policyNo,
+        installmentNo: installmentNoRaw ?? undefined,
+      });
+      continue;
+    }
+
     // Look up the row to ensure it exists and isn't already paid.
     const existing = db
       .select()

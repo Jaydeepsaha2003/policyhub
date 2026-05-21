@@ -72,6 +72,11 @@ const applySchema = (sqlite: Database.Database) => {
       maturity_type TEXT NOT NULL DEFAULT 'lumpsum',
       maturity_frequency TEXT,
       maturity_account_details TEXT,
+      maturity_bank_name TEXT,
+      maturity_account_no TEXT,
+      maturity_ifsc TEXT,
+      maturity_branch_name TEXT,
+      maturity_account_holder TEXT,
       notes TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -132,7 +137,11 @@ const applySchema = (sqlite: Database.Database) => {
       setup_complete INTEGER NOT NULL DEFAULT 0,
       theme TEXT NOT NULL DEFAULT 'system',
       reminder_days_of_month TEXT NOT NULL DEFAULT '[1,10,20]',
-      email_template_monthly TEXT
+      email_template_monthly TEXT,
+      cloud_sheet_url TEXT,
+      cloud_sheet_secret_encrypted TEXT,
+      cloud_sync_on_quit INTEGER NOT NULL DEFAULT 0,
+      cloud_last_synced_at TEXT
     );
 
     INSERT OR IGNORE INTO settings (id) VALUES (1);
@@ -192,8 +201,17 @@ const applySchema = (sqlite: Database.Database) => {
   addColumnIfMissing(sqlite, 'policies', 'maturity_type', "TEXT NOT NULL DEFAULT 'lumpsum'");
   addColumnIfMissing(sqlite, 'policies', 'maturity_frequency', 'TEXT');
   addColumnIfMissing(sqlite, 'policies', 'maturity_account_details', 'TEXT');
+  addColumnIfMissing(sqlite, 'policies', 'maturity_bank_name', 'TEXT');
+  addColumnIfMissing(sqlite, 'policies', 'maturity_account_no', 'TEXT');
+  addColumnIfMissing(sqlite, 'policies', 'maturity_ifsc', 'TEXT');
+  addColumnIfMissing(sqlite, 'policies', 'maturity_branch_name', 'TEXT');
+  addColumnIfMissing(sqlite, 'policies', 'maturity_account_holder', 'TEXT');
   addColumnIfMissing(sqlite, 'premium_payments', 'payment_source', 'TEXT');
   addColumnIfMissing(sqlite, 'premium_payments', 'payment_source_name', 'TEXT');
+  addColumnIfMissing(sqlite, 'settings', 'cloud_sheet_url', 'TEXT');
+  addColumnIfMissing(sqlite, 'settings', 'cloud_sheet_secret_encrypted', 'TEXT');
+  addColumnIfMissing(sqlite, 'settings', 'cloud_sync_on_quit', 'INTEGER NOT NULL DEFAULT 0');
+  addColumnIfMissing(sqlite, 'settings', 'cloud_last_synced_at', 'TEXT');
 
   // Default email templates if not yet set.
   const row = sqlite

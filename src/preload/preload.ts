@@ -23,6 +23,8 @@ const api = {
     remove: (id: string) => invoke(IPC.policiesDelete, id),
     syncMaturity: (id: string) =>
       invoke<{ created: number; removed: number }>(IPC.policiesSyncMaturity, id),
+    exportExcel: () =>
+      invoke<{ saved: boolean; path?: string; rowCount?: number }>(IPC.policiesExportExcel),
   },
   payments: {
     listByPolicy: (policyId: string) => invoke(IPC.paymentsListByPolicy, policyId),
@@ -34,12 +36,16 @@ const api = {
   },
   dashboard: {
     metrics: () => invoke(IPC.dashboardMetrics),
-    overview: (period?: 'monthly' | 'quarterly' | 'yearly') =>
-      invoke(IPC.dashboardOverview, period ?? 'monthly'),
+    overview: (
+      period?: 'monthly' | 'quarterly' | 'yearly',
+      range?: { from?: string; to?: string } | null,
+    ) => invoke(IPC.dashboardOverview, period ?? 'monthly', range ?? null),
     series: (period?: 'monthly' | 'quarterly' | 'yearly') =>
       invoke(IPC.dashboardSeries, period ?? 'monthly'),
-    maturing: (period?: 'monthly' | 'quarterly' | 'yearly') =>
-      invoke(IPC.dashboardMaturing, period ?? 'monthly'),
+    maturing: (
+      period?: 'monthly' | 'quarterly' | 'yearly',
+      range?: { from?: string; to?: string } | null,
+    ) => invoke(IPC.dashboardMaturing, period ?? 'monthly', range ?? null),
     currentMonth: () => invoke(IPC.dashboardCurrentMonth),
   },
   reminders: {
@@ -75,6 +81,17 @@ const api = {
     backupDb: () => invoke(IPC.appBackupDb),
     exportJson: () => invoke(IPC.appExportJson),
     resetData: () => invoke<{ reset: boolean }>(IPC.appResetData),
+  },
+  cloud: {
+    sync: () =>
+      invoke<{
+        ok: boolean;
+        counts?: { policies: number; installments: number; repayments: number };
+        error?: string;
+      }>(IPC.cloudSync),
+    test: () =>
+      invoke<{ ok: boolean; error?: string }>(IPC.cloudTest),
+    generateSecret: () => invoke<string>(IPC.cloudGenerateSecret),
   },
 };
 

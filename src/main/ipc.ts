@@ -30,6 +30,8 @@ import {
   removeAttachment,
 } from './repo/attachments';
 import { generateTemplate, importTemplate } from './bulk';
+import { exportAllPolicies } from './bulk-policies-export';
+import { generateCloudSecret, syncToSheet, testCloudConnection } from './cloud-sync';
 import {
   cancelRepayment,
   createRepaymentBatch,
@@ -86,6 +88,12 @@ export const registerIpc = () => {
   });
   handle(IPC.policiesDelete, (id: string) => deletePolicy(id));
   handle(IPC.policiesSyncMaturity, (id: string) => generateMaturityRepayments(id));
+  handle(IPC.policiesExportExcel, () => exportAllPolicies());
+
+  // Cloud sync (Google Sheets + Apps Script)
+  handle(IPC.cloudSync, () => syncToSheet());
+  handle(IPC.cloudTest, () => testCloudConnection());
+  handle(IPC.cloudGenerateSecret, () => generateCloudSecret());
 
   // Payments
   handle(IPC.paymentsListByPolicy, (policyId: string) => listPaymentsByPolicy(policyId));
@@ -109,9 +117,17 @@ export const registerIpc = () => {
       remindersSentLast7Days: countRemindersLast7Days(),
     };
   });
-  handle(IPC.dashboardOverview, (period: Period = 'monthly') => buildOverview(period));
+  handle(
+    IPC.dashboardOverview,
+    (period: Period = 'monthly', range?: { from?: string; to?: string } | null) =>
+      buildOverview(period, range ?? null),
+  );
   handle(IPC.dashboardSeries, (period: Period = 'monthly') => buildSeries(period));
-  handle(IPC.dashboardMaturing, (period: Period = 'monthly') => maturingPolicies(period));
+  handle(
+    IPC.dashboardMaturing,
+    (period: Period = 'monthly', range?: { from?: string; to?: string } | null) =>
+      maturingPolicies(period, range ?? null),
+  );
   handle(IPC.dashboardCurrentMonth, () => currentMonthPayments());
 
   // Reminders

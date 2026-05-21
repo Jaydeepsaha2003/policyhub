@@ -15,6 +15,7 @@ type PolicyHubApi = {
     update: (id: string, input: any) => Promise<any>;
     remove: (id: string) => Promise<void>;
     syncMaturity: (id: string) => Promise<{ created: number; removed: number }>;
+    exportExcel: () => Promise<{ saved: boolean; path?: string; rowCount?: number }>;
   };
   payments: {
     listByPolicy: (policyId: string) => Promise<any[]>;
@@ -29,9 +30,15 @@ type PolicyHubApi = {
   };
   dashboard: {
     metrics: () => Promise<any>;
-    overview: (period?: 'monthly' | 'quarterly' | 'yearly') => Promise<any>;
+    overview: (
+      period?: 'monthly' | 'quarterly' | 'yearly',
+      range?: { from?: string; to?: string } | null,
+    ) => Promise<any>;
     series: (period?: 'monthly' | 'quarterly' | 'yearly') => Promise<any[]>;
-    maturing: (period?: 'monthly' | 'quarterly' | 'yearly') => Promise<any[]>;
+    maturing: (
+      period?: 'monthly' | 'quarterly' | 'yearly',
+      range?: { from?: string; to?: string } | null,
+    ) => Promise<any[]>;
     currentMonth: () => Promise<any[]>;
   };
   reminders: {
@@ -81,6 +88,15 @@ type PolicyHubApi = {
     backupDb: () => Promise<{ saved: boolean; path?: string }>;
     exportJson: () => Promise<{ saved: boolean; path?: string }>;
     resetData: () => Promise<{ reset: boolean }>;
+  };
+  cloud: {
+    sync: () => Promise<{
+      ok: boolean;
+      counts?: { policies: number; installments: number; repayments: number };
+      error?: string;
+    }>;
+    test: () => Promise<{ ok: boolean; error?: string }>;
+    generateSecret: () => Promise<string>;
   };
 };
 
