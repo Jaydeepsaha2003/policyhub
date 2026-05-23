@@ -171,6 +171,74 @@ export const markRepaymentReceived = (input: MarkReceivedInput) => {
     .run();
 };
 
+export type UpdateRepaymentInput = {
+  id: string;
+  status: 'pending' | 'received' | 'overdue' | 'cancelled';
+  title?: string;
+  policyId?: string | null;
+  amount?: number; // rupees
+  expectedDate?: string;
+  receivedDate?: string | null;
+  receivedAmount?: number | null; // rupees
+  receivedSource?: string | null;
+  receivedSourceName?: string | null;
+  refNo?: string | null;
+  notes?: string | null;
+};
+
+export const updateRepayment = (input: UpdateRepaymentInput) => {
+  const today = format(new Date(), 'yyyy-MM-dd');
+  if (input.receivedDate && input.receivedDate > today) {
+    throw new Error("Received date can't be in the future");
+  }
+  if (input.status === 'received') {
+    if (!input.receivedDate) throw new Error('Received date is required');
+    if (!Number.isFinite(input.receivedAmount) || (input.receivedAmount as number) <= 0) {
+      throw new Error('Received amount must be greater than zero');
+    }
+  }
+  if (input.amount !== undefined && input.amount <= 0) {
+    throw new Error('Expected amount must be greater than zero');
+  }
+  if (input.title !== undefined && !input.title.trim()) {
+    throw new Error('Title is required');
+  }
+
+  const sqlite = getRawSqlite();
+  const stmt = sqlite.prepare(`
+    UPDATE repayments
+       SET status = @status,
+           policy_id = @policy_id,
+           title = COALESCE(@title, title),
+           amount = COALESCE(@amount, amount),
+           expected_date = COALESCE(@expected_date, expected_date),
+           received_date = @received_date,
+           received_amount = @received_amount,
+           received_source = @received_source,
+           received_source_name = @received_source_name,
+           ref_no = @ref_no,
+           notes = @notes,
+           updated_at = CURRENT_TIMESTAMP
+     WHERE id = @id
+  `);
+  const isReceived = input.status === 'received';
+  stmt.run({
+    id: input.id,
+    status: input.status,
+    policy_id: input.policyId === undefined ? null : input.policyId,
+    title: input.title ?? null,
+    amount: input.amount !== undefined ? rupeesToPaise(input.amount) : null,
+    expected_date: input.expectedDate ?? null,
+    received_date: isReceived ? input.receivedDate ?? null : null,
+    received_amount:
+      isReceived && input.receivedAmount != null ? rupeesToPaise(input.receivedAmount) : null,
+    received_source: isReceived ? input.receivedSource ?? null : null,
+    received_source_name: isReceived ? input.receivedSourceName ?? null : null,
+    ref_no: isReceived ? input.refNo ?? null : null,
+    notes: input.notes ?? null,
+  });
+};
+
 export const cancelRepayment = (id: string) => {
   const db = getDb();
   db.update(repayments)

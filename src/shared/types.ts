@@ -50,8 +50,8 @@ export type PolicyFormInput = {
   nomineeRelation?: string;
   commencementDate: string;
   maturityDate: string;
-  policyTermYears: number;
-  premiumPaymentTermYears: number;
+  policyTermMonths: number;
+  premiumPaymentTermMonths: number;
   branchName?: string;
   agentName?: string;
   agentContact?: string;

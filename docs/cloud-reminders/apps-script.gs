@@ -274,7 +274,7 @@ function formatRows(rows) {
           ? '₹' + r.expectedAmount.toLocaleString('en-IN')
           : r.expectedAmount;
       const dateStr = r.dueDate
-        ? Utilities.formatDate(new Date(r.dueDate), Session.getScriptTimeZone(), 'dd MMM yyyy')
+        ? Utilities.formatDate(new Date(r.dueDate), Session.getScriptTimeZone(), 'dd-MM-yyyy')
         : '';
       return '  - ' + r.policyNo + ' | ' + r.policyHolder + ' | ' + dateStr + ' | ' + amount;
     })

@@ -70,8 +70,8 @@ const defaults: PolicyFormValues = {
   maturityDate: new Date(new Date().setFullYear(new Date().getFullYear() + 20))
     .toISOString()
     .slice(0, 10),
-  policyTermYears: 20,
-  premiumPaymentTermYears: 20,
+  policyTermMonths: 240,
+  premiumPaymentTermMonths: 240,
   branchName: undefined,
   agentName: undefined,
   agentContact: undefined,
@@ -113,8 +113,8 @@ const STEPS = [
       'sumAssured',
       'commencementDate',
       'maturityDate',
-      'premiumPaymentTermYears',
-      'policyTermYears',
+      'premiumPaymentTermMonths',
+      'policyTermMonths',
       'yearlyTotalPremium',
     ] as const,
   },
@@ -179,15 +179,22 @@ export const PolicyFormPage = ({ mode, initial, onSaved }: Props) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watched.premiumAmount, watched.paymentMode]);
 
-  // Auto-calc: policy term years = round((maturity - commencement) / 365.25).
+  // Auto-calc: policy term in MONTHS = full calendar months between commencement and maturity.
   useEffect(() => {
     const s = watched.commencementDate ? new Date(watched.commencementDate) : null;
     const e = watched.maturityDate ? new Date(watched.maturityDate) : null;
     if (!s || !e || Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return;
     if (e <= s) return;
-    const years = Math.round((e.getTime() - s.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
-    if (years > 0 && years !== watched.policyTermYears) {
-      form.setValue('policyTermYears', years, { shouldValidate: false, shouldDirty: true });
+    // Whole-month difference + day correction → rounded to nearest month.
+    const yearsDiff = e.getFullYear() - s.getFullYear();
+    const monthsDiff = e.getMonth() - s.getMonth();
+    const dayDelta = e.getDate() - s.getDate();
+    const months = Math.max(
+      1,
+      Math.round(yearsDiff * 12 + monthsDiff + dayDelta / 30.4375),
+    );
+    if (months !== watched.policyTermMonths) {
+      form.setValue('policyTermMonths', months, { shouldValidate: false, shouldDirty: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watched.commencementDate, watched.maturityDate]);
@@ -197,23 +204,23 @@ export const PolicyFormPage = ({ mode, initial, onSaved }: Props) => {
       const ins = generateInstallments(
         watched.commencementDate,
         watched.paymentMode,
-        Math.max(1, Number(watched.premiumPaymentTermYears) || 1),
+        Math.max(1, Number(watched.premiumPaymentTermMonths) || 1),
       );
       return ins.slice(0, 6);
     } catch {
       return [];
     }
-  }, [watched.commencementDate, watched.paymentMode, watched.premiumPaymentTermYears]);
+  }, [watched.commencementDate, watched.paymentMode, watched.premiumPaymentTermMonths]);
 
   const onSubmit = async (values: PolicyFormValues) => {
     // Hard rule: PPT cannot exceed policy term.
     if (
-      Number.isFinite(values.premiumPaymentTermYears) &&
-      Number.isFinite(values.policyTermYears) &&
-      values.premiumPaymentTermYears > values.policyTermYears
+      Number.isFinite(values.premiumPaymentTermMonths) &&
+      Number.isFinite(values.policyTermMonths) &&
+      values.premiumPaymentTermMonths > values.policyTermMonths
     ) {
       toast.error(
-        `Premium payment term (${values.premiumPaymentTermYears} yrs) can't exceed policy term (${values.policyTermYears} yrs).`,
+        `Premium payment term (${values.premiumPaymentTermMonths} months) can't exceed policy term (${values.policyTermMonths} months).`,
       );
       return;
     }
@@ -289,11 +296,11 @@ export const PolicyFormPage = ({ mode, initial, onSaved }: Props) => {
     // Cross-field check: PPT must be ≤ policy term. Root-level Zod refines
     // don't fire on per-field form.trigger, so check it here too.
     if (step.key === 'premium') {
-      const ppt = Number(watched.premiumPaymentTermYears);
-      const pt = Number(watched.policyTermYears);
+      const ppt = Number(watched.premiumPaymentTermMonths);
+      const pt = Number(watched.policyTermMonths);
       if (Number.isFinite(ppt) && Number.isFinite(pt) && ppt > pt) {
         toast.error(
-          `Premium payment term (${ppt} yrs) can't exceed policy term (${pt} yrs).`,
+          `Premium payment term (${ppt} months) can't exceed policy term (${pt} months).`,
         );
         return;
       }
@@ -413,8 +420,8 @@ export const PolicyFormPage = ({ mode, initial, onSaved }: Props) => {
           <Input type="date" {...reg('maturityDate')} />
         </Field>
         <Field
-          label="Policy term (years)"
-          error={errs.policyTermYears?.message}
+          label="Policy term (months)"
+          error={errs.policyTermMonths?.message}
           hint="Auto-calculated from commencement & maturity"
         >
           <Input
@@ -422,29 +429,29 @@ export const PolicyFormPage = ({ mode, initial, onSaved }: Props) => {
             readOnly
             tabIndex={-1}
             className="bg-muted/40 text-muted-foreground"
-            value={Number.isFinite(watched.policyTermYears) ? watched.policyTermYears : 0}
+            value={Number.isFinite(watched.policyTermMonths) ? watched.policyTermMonths : 0}
             onChange={() => {
               /* read-only */
             }}
           />
         </Field>
         <Field
-          label="Premium payment term (years)"
+          label="Premium payment term (months)"
           required
           error={
-            errs.premiumPaymentTermYears?.message ??
-            (Number.isFinite(watched.premiumPaymentTermYears) &&
-            Number.isFinite(watched.policyTermYears) &&
-            watched.premiumPaymentTermYears > watched.policyTermYears
-              ? `PPT (${watched.premiumPaymentTermYears} yrs) can't exceed policy term (${watched.policyTermYears} yrs)`
+            errs.premiumPaymentTermMonths?.message ??
+            (Number.isFinite(watched.premiumPaymentTermMonths) &&
+            Number.isFinite(watched.policyTermMonths) &&
+            watched.premiumPaymentTermMonths > watched.policyTermMonths
+              ? `PPT (${watched.premiumPaymentTermMonths} months) can't exceed policy term (${watched.policyTermMonths} months)`
               : undefined)
           }
         >
           <Input
             type="number"
             min={1}
-            max={watched.policyTermYears || undefined}
-            {...reg('premiumPaymentTermYears', { valueAsNumber: true })}
+            max={watched.policyTermMonths || undefined}
+            {...reg('premiumPaymentTermMonths', { valueAsNumber: true })}
           />
         </Field>
       </div>

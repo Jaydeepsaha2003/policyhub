@@ -26,6 +26,7 @@ type PolicyHubApi = {
       upToDate: string;
       paymentMethod?: string;
     }) => Promise<number>;
+    update: (input: any) => Promise<void>;
     upcoming: (limit?: number) => Promise<any[]>;
   };
   dashboard: {
@@ -61,6 +62,7 @@ type PolicyHubApi = {
     list: (filters?: any) => Promise<any[]>;
     createBatch: (input: any) => Promise<string[]>;
     markReceived: (input: any) => Promise<void>;
+    update: (input: any) => Promise<void>;
     cancel: (id: string) => Promise<void>;
     remove: (id: string) => Promise<void>;
     downloadTemplate: () => Promise<{ saved: boolean; path?: string; rowCount?: number }>;

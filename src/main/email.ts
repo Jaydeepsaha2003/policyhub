@@ -123,7 +123,7 @@ const formatList = (items: ListedItem[]): string => {
       (i) =>
         `  - ${i.policyNo} | ${i.policyHolder} | ${i.companyName} | ${format(
           parseISO(i.dueDate),
-          'dd MMM yyyy',
+          'dd-MM-yyyy',
         )} | ${formatCurrencyINR(i.expectedAmount)}`,
     )
     .join('\n');

@@ -17,6 +17,7 @@ import {
   markAllPaidUpTo,
   markOverdueInstallments,
   markPaid,
+  updatePayment,
   upcomingPremiums,
 } from './repo/payments';
 import { countRemindersLast7Days, listReminderLog } from './repo/reminders';
@@ -39,6 +40,7 @@ import {
   generateMaturityRepayments,
   listRepaymentsWithPolicy,
   markRepaymentReceived,
+  updateRepayment,
 } from './repo/repayments';
 import {
   generateRepaymentTemplate,
@@ -104,6 +106,7 @@ export const registerIpc = () => {
     (input: { policyId: string; upToDate: string; paymentMethod?: string }) =>
       markAllPaidUpTo(input.policyId, input.upToDate, input.paymentMethod),
   );
+  handle(IPC.paymentsUpdate, (input: any) => updatePayment(input));
   handle(IPC.paymentsUpcoming, (limit?: number) => upcomingPremiums(limit ?? 10));
 
   // Dashboard
@@ -146,6 +149,7 @@ export const registerIpc = () => {
   handle(IPC.repaymentsList, (filters: any) => listRepaymentsWithPolicy(filters));
   handle(IPC.repaymentsCreateBatch, (input: any) => createRepaymentBatch(input));
   handle(IPC.repaymentsMarkReceived, (input: any) => markRepaymentReceived(input));
+  handle(IPC.repaymentsUpdate, (input: any) => updateRepayment(input));
   handle(IPC.repaymentsCancel, (id: string) => cancelRepayment(id));
   handle(IPC.repaymentsDelete, (id: string) => deleteRepayment(id));
   handle(IPC.repaymentsDownloadTemplate, () => generateRepaymentTemplate());

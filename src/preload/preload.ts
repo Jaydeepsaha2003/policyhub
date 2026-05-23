@@ -32,6 +32,7 @@ const api = {
     markPaid: (input: unknown) => invoke(IPC.paymentsMarkPaid, input),
     markAllPaidUpTo: (input: { policyId: string; upToDate: string; paymentMethod?: string }) =>
       invoke<number>(IPC.paymentsMarkAllPaidUpTo, input),
+    update: (input: unknown) => invoke(IPC.paymentsUpdate, input),
     upcoming: (limit?: number) => invoke(IPC.paymentsUpcoming, limit),
   },
   dashboard: {
@@ -61,6 +62,7 @@ const api = {
     list: (filters?: unknown) => invoke(IPC.repaymentsList, filters),
     createBatch: (input: unknown) => invoke(IPC.repaymentsCreateBatch, input),
     markReceived: (input: unknown) => invoke(IPC.repaymentsMarkReceived, input),
+    update: (input: unknown) => invoke(IPC.repaymentsUpdate, input),
     cancel: (id: string) => invoke(IPC.repaymentsCancel, id),
     remove: (id: string) => invoke(IPC.repaymentsDelete, id),
     downloadTemplate: () => invoke(IPC.repaymentsDownloadTemplate),

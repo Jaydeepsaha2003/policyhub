@@ -40,7 +40,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { Plus, FileDown, FileUp, Loader2, Trash2, AlertTriangle } from 'lucide-react';
+import { Plus, FileDown, FileUp, Loader2, Trash2, AlertTriangle, Pencil } from 'lucide-react';
+import { EditRepaymentDialog, type EditableRepayment } from './edit-repayment-dialog';
 import { toast } from 'sonner';
 import { formatCurrencyPaise, formatDate, isoToday } from '@/lib/utils';
 
@@ -100,6 +101,7 @@ export const RepaymentsPage = () => {
   const [importing, setImporting] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [markReceivedFor, setMarkReceivedFor] = useState<Repayment | null>(null);
+  const [editRow, setEditRow] = useState<EditableRepayment | null>(null);
   const [importResult, setImportResult] = useState<{
     totalRows: number;
     updated: number;
@@ -300,6 +302,29 @@ export const RepaymentsPage = () => {
                             Mark received
                           </Button>
                         )}
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          title="Edit repayment"
+                          onClick={() =>
+                            setEditRow({
+                              id: r.id,
+                              policyId: r.policyId,
+                              title: r.title,
+                              amount: r.amount,
+                              expectedDate: r.expectedDate,
+                              status: r.status,
+                              receivedDate: r.receivedDate,
+                              receivedAmount: r.receivedAmount,
+                              receivedSource: r.receivedSource,
+                              receivedSourceName: r.receivedSourceName,
+                              refNo: r.refNo,
+                              notes: r.notes,
+                            })
+                          }
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button size="icon" variant="ghost" title="Delete">
@@ -360,6 +385,16 @@ export const RepaymentsPage = () => {
         onClose={() => setMarkReceivedFor(null)}
         onSaved={() => {
           setMarkReceivedFor(null);
+          load();
+        }}
+      />
+
+      <EditRepaymentDialog
+        repayment={editRow}
+        policies={policies}
+        onClose={() => setEditRow(null)}
+        onSaved={() => {
+          setEditRow(null);
           load();
         }}
       />

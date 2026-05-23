@@ -20,6 +20,7 @@ export const IPC = {
   paymentsListAll: 'payments:listAll',
   paymentsMarkPaid: 'payments:markPaid',
   paymentsMarkAllPaidUpTo: 'payments:markAllPaidUpTo',
+  paymentsUpdate: 'payments:update',
   paymentsUpcoming: 'payments:upcoming',
 
   // Dashboard
@@ -42,6 +43,7 @@ export const IPC = {
   repaymentsList: 'repayments:list',
   repaymentsCreateBatch: 'repayments:createBatch',
   repaymentsMarkReceived: 'repayments:markReceived',
+  repaymentsUpdate: 'repayments:update',
   repaymentsCancel: 'repayments:cancel',
   repaymentsDelete: 'repayments:delete',
   repaymentsDownloadTemplate: 'repayments:downloadTemplate',

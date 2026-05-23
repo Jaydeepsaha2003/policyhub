@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableEmpty } from '@/components/ui/table';
-import { Download, FileDown, FileUp, Loader2 } from 'lucide-react';
+import { Download, FileDown, FileUp, Loader2, Pencil } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -17,6 +17,7 @@ import {
 import { formatCurrencyPaise, formatDate } from '@/lib/utils';
 import { toast } from 'sonner';
 import { MarkPaidDialog } from './mark-paid-dialog';
+import { EditPaymentDialog, type EditablePayment } from './edit-payment-dialog';
 import { useRouter } from '@/lib/router';
 
 type Row = {
@@ -57,6 +58,7 @@ export const PaymentsPage = () => {
   const [to, setTo] = useState('');
   const [markId, setMarkId] = useState<string | null>(null);
   const [markDefault, setMarkDefault] = useState(0);
+  const [editRow, setEditRow] = useState<EditablePayment | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{
@@ -315,19 +317,47 @@ export const PaymentsPage = () => {
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        {r.status !== 'paid' && (
+                        <div className="flex items-center justify-end gap-1">
+                          {r.status !== 'paid' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setMarkDefault(r.expectedAmount / 100);
+                                setMarkId(r.id);
+                              }}
+                            >
+                              Mark paid
+                            </Button>
+                          )}
                           <Button
-                            size="sm"
-                            variant="outline"
+                            size="icon"
+                            variant="ghost"
+                            title="Edit payment"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setMarkDefault(r.expectedAmount / 100);
-                              setMarkId(r.id);
+                              setEditRow({
+                                id: r.id,
+                                installmentNo: r.installmentNo,
+                                dueDate: r.dueDate,
+                                expectedAmount: r.expectedAmount,
+                                status: r.status,
+                                paidDate: r.paidDate,
+                                paidAmount: r.paidAmount,
+                                paymentMethod: r.paymentMethod,
+                                paymentSource: r.paymentSource,
+                                paymentSourceName: r.paymentSourceName,
+                                receiptNo: r.receiptNo,
+                                penaltyAmount: r.penaltyAmount,
+                                lateFee: r.lateFee,
+                                notes: null,
+                              });
                             }}
                           >
-                            Mark paid
+                            <Pencil className="h-4 w-4" />
                           </Button>
-                        )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
@@ -342,6 +372,11 @@ export const PaymentsPage = () => {
         paymentId={markId}
         defaultAmount={markDefault}
         onClose={() => setMarkId(null)}
+        onSaved={() => load()}
+      />
+      <EditPaymentDialog
+        payment={editRow}
+        onClose={() => setEditRow(null)}
         onSaved={() => load()}
       />
 

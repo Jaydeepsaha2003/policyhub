@@ -82,6 +82,85 @@ export const markAllPaidUpTo = (
   return info.changes;
 };
 
+// Edit a payment row. Allows changing status (paid/pending/overdue) and any of
+// the recorded fields. If status is being moved away from "paid", we clear the
+// receipt-side fields.
+export type UpdatePaymentInput = {
+  id: string;
+  status: 'pending' | 'paid' | 'overdue';
+  dueDate?: string;
+  expectedAmount?: number; // rupees
+  paidDate?: string | null;
+  paidAmount?: number | null; // rupees
+  paymentMethod?: string | null;
+  paymentSource?: string | null;
+  paymentSourceName?: string | null;
+  receiptNo?: string | null;
+  penaltyAmount?: number; // rupees
+  lateFee?: number; // rupees
+  notes?: string | null;
+};
+
+export const updatePayment = (input: UpdatePaymentInput) => {
+  const today = format(new Date(), 'yyyy-MM-dd');
+  if (input.paidDate && input.paidDate > today) {
+    throw new Error("Paid date can't be in the future");
+  }
+  if (input.status === 'paid') {
+    if (!input.paidDate) throw new Error('Paid date is required for paid status');
+    if (!Number.isFinite(input.paidAmount) || (input.paidAmount as number) <= 0) {
+      throw new Error('Paid amount must be greater than zero');
+    }
+  }
+  if (input.penaltyAmount !== undefined && input.penaltyAmount < 0) {
+    throw new Error('Penalty cannot be negative');
+  }
+  if (input.lateFee !== undefined && input.lateFee < 0) {
+    throw new Error('Late fee cannot be negative');
+  }
+  if (input.expectedAmount !== undefined && input.expectedAmount <= 0) {
+    throw new Error('Expected amount must be greater than zero');
+  }
+
+  const sqlite = getRawSqlite();
+  const stmt = sqlite.prepare(`
+    UPDATE premium_payments
+       SET status = @status,
+           due_date = COALESCE(@due_date, due_date),
+           expected_amount = COALESCE(@expected_amount, expected_amount),
+           paid_date = @paid_date,
+           paid_amount = @paid_amount,
+           payment_method = @payment_method,
+           payment_source = @payment_source,
+           payment_source_name = @payment_source_name,
+           receipt_no = @receipt_no,
+           penalty_amount = COALESCE(@penalty_amount, penalty_amount),
+           late_fee = COALESCE(@late_fee, late_fee),
+           notes = @notes,
+           updated_at = CURRENT_TIMESTAMP
+     WHERE id = @id
+  `);
+  // If status moves away from paid, clear the receipt fields.
+  const isPaid = input.status === 'paid';
+  stmt.run({
+    id: input.id,
+    status: input.status,
+    due_date: input.dueDate ?? null,
+    expected_amount:
+      input.expectedAmount !== undefined ? rupeesToPaise(input.expectedAmount) : null,
+    paid_date: isPaid ? input.paidDate ?? null : null,
+    paid_amount: isPaid && input.paidAmount != null ? rupeesToPaise(input.paidAmount) : null,
+    payment_method: isPaid ? input.paymentMethod ?? null : null,
+    payment_source: isPaid ? input.paymentSource ?? null : null,
+    payment_source_name: isPaid ? input.paymentSourceName ?? null : null,
+    receipt_no: isPaid ? input.receiptNo ?? null : null,
+    penalty_amount:
+      input.penaltyAmount !== undefined ? rupeesToPaise(input.penaltyAmount) : null,
+    late_fee: input.lateFee !== undefined ? rupeesToPaise(input.lateFee) : null,
+    notes: input.notes ?? null,
+  });
+};
+
 export const markOverdueInstallments = () => {
   const today = format(new Date(), 'yyyy-MM-dd');
   const db = getDb();

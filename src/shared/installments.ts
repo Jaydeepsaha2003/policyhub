@@ -36,11 +36,11 @@ export type GeneratedInstallment = {
 export const generateInstallments = (
   commencementDate: string,
   paymentMode: PaymentMode,
-  premiumPaymentTermYears: number,
+  premiumPaymentTermMonths: number,
 ): GeneratedInstallment[] => {
   const start = parseISO(commencementDate);
-  const total = paymentsPerYear(paymentMode) * premiumPaymentTermYears;
   const step = monthsBetweenInstallments(paymentMode);
+  const total = Math.max(0, Math.floor(premiumPaymentTermMonths / step));
   const out: GeneratedInstallment[] = [];
   for (let i = 0; i < total; i++) {
     const due = addMonths(start, i * step);

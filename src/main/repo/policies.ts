@@ -31,8 +31,8 @@ const normalize = (input: PolicyFormInput) => ({
   nomineeRelation: input.nomineeRelation?.trim() || null,
   commencementDate: input.commencementDate,
   maturityDate: input.maturityDate,
-  policyTermYears: input.policyTermYears,
-  premiumPaymentTermYears: input.premiumPaymentTermYears,
+  policyTermMonths: input.policyTermMonths,
+  premiumPaymentTermMonths: input.premiumPaymentTermMonths,
   branchName: input.branchName?.trim() || null,
   agentName: input.agentName?.trim() || null,
   agentContact: input.agentContact?.trim() || null,
@@ -80,11 +80,27 @@ export const updatePolicy = (id: string, input: PolicyFormInput) => {
   const scheduleChanged =
     before.commencementDate !== data.commencementDate ||
     before.paymentMode !== data.paymentMode ||
-    before.premiumPaymentTermYears !== data.premiumPaymentTermYears ||
+    before.premiumPaymentTermMonths !== data.premiumPaymentTermMonths ||
     before.premiumAmount !== data.premiumAmount;
 
   if (scheduleChanged) {
     regenerateInstallments(id);
+  }
+
+  // Auto-sync maturity repayments if any maturity-related field changed.
+  const maturityChanged =
+    before.maturityDate !== data.maturityDate ||
+    before.maturityType !== data.maturityType ||
+    before.maturityFrequency !== data.maturityFrequency ||
+    before.sumAssured !== data.sumAssured;
+
+  if (maturityChanged) {
+    try {
+      const { generateMaturityRepayments } = require('./repayments') as typeof import('./repayments');
+      generateMaturityRepayments(id);
+    } catch (err) {
+      console.error('[policies] auto maturity-sync on update failed', err);
+    }
   }
 };
 
@@ -102,7 +118,7 @@ export const regenerateInstallments = (policyId: string) => {
   const desired = generateInstallments(
     p.commencementDate,
     p.paymentMode,
-    p.premiumPaymentTermYears,
+    p.premiumPaymentTermMonths,
   );
 
   const existing = db

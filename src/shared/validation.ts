@@ -30,8 +30,8 @@ export const policySchema = z
     nomineeRelation: z.string().trim().optional(),
     commencementDate: z.string().min(1, 'Required'),
     maturityDate: z.string().min(1, 'Required'),
-    policyTermYears: z.coerce.number().int().positive(),
-    premiumPaymentTermYears: z.coerce.number().int().positive(),
+    policyTermMonths: z.coerce.number().int().positive(),
+    premiumPaymentTermMonths: z.coerce.number().int().positive(),
     branchName: z.string().trim().optional(),
     agentName: z.string().trim().optional(),
     agentContact: optionalPhone,
@@ -67,9 +67,9 @@ export const policySchema = z
     message: 'Maturity date must be after commencement',
     path: ['maturityDate'],
   })
-  .refine((v) => v.premiumPaymentTermYears <= v.policyTermYears, {
+  .refine((v) => v.premiumPaymentTermMonths <= v.policyTermMonths, {
     message: 'Payment term cannot exceed policy term',
-    path: ['premiumPaymentTermYears'],
+    path: ['premiumPaymentTermMonths'],
   });
 
 export type PolicyFormValues = z.infer<typeof policySchema>;

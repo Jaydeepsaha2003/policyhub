@@ -63,8 +63,8 @@ const applySchema = (sqlite: Database.Database) => {
       nominee_relation TEXT,
       commencement_date TEXT NOT NULL,
       maturity_date TEXT NOT NULL,
-      policy_term_years INTEGER NOT NULL,
-      premium_payment_term_years INTEGER NOT NULL,
+      policy_term_months INTEGER NOT NULL,
+      premium_payment_term_months INTEGER NOT NULL,
       branch_name TEXT,
       agent_name TEXT,
       agent_contact TEXT,
@@ -212,6 +212,25 @@ const applySchema = (sqlite: Database.Database) => {
   addColumnIfMissing(sqlite, 'settings', 'cloud_sheet_secret_encrypted', 'TEXT');
   addColumnIfMissing(sqlite, 'settings', 'cloud_sync_on_quit', 'INTEGER NOT NULL DEFAULT 0');
   addColumnIfMissing(sqlite, 'settings', 'cloud_last_synced_at', 'TEXT');
+
+  // Migration: rename policy_term_years → policy_term_months and multiply by 12.
+  const policiesCols = sqlite.prepare(`PRAGMA table_info(policies)`).all() as Array<{
+    name: string;
+  }>;
+  const hasOldYears = policiesCols.some((c) => c.name === 'policy_term_years');
+  const hasNewMonths = policiesCols.some((c) => c.name === 'policy_term_months');
+  if (hasOldYears && !hasNewMonths) {
+    sqlite.exec(`
+      ALTER TABLE policies RENAME COLUMN policy_term_years TO policy_term_months;
+      ALTER TABLE policies RENAME COLUMN premium_payment_term_years TO premium_payment_term_months;
+      UPDATE policies
+         SET policy_term_months = policy_term_months * 12,
+             premium_payment_term_months = premium_payment_term_months * 12;
+    `);
+    console.log(
+      '[db] Migrated policy_term_years/premium_payment_term_years → months (×12)',
+    );
+  }
 
   // Default email templates if not yet set.
   const row = sqlite

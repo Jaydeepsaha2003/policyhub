@@ -86,21 +86,18 @@ type Calc = {
   paramsUsed: Params;
 };
 
-// SIMPLE INTEREST valuation, matching the user's worked Excel:
+// COMPOUND INTEREST valuation:
 //   For each scheduled premium installment with due_date <= valuation_date:
-//     years_elapsed = months_between(due_date, val_date) / 12
-//     value_at_val_date = principal * (1 + ROI * years_elapsed)
+//     n = compoundings per year (12 / 4 / 2 / 1)
+//     t = years between due_date and valuation_date
+//     value_at_val_date = principal * (1 + ROI/n)^(n * t)
 //   estimatedValuation = sum of those values
 //
 // Notes:
 // - "Paid or not" doesn't matter — only the schedule does.
-// - Premiums whose due_date is AFTER valuation_date are skipped (haven't
-//   contributed yet).
-// - Premium-payment-term ending doesn't need special handling — no installments
-//   exist past PPT, so they don't contribute, but the older installments keep
-//   accruing interest until the valuation date.
-// - With simple interest the compounding frequency cancels out (months/12 =
-//   quarters/4 = years/1). The freq is kept on the form for UX/labelling only.
+// - Premiums whose due_date is AFTER valuation_date are skipped.
+// - Compounding frequency DOES affect the result:
+//   Monthly > Quarterly > Half-yearly > Annual (for the same ROI and t > 0).
 const monthsBetween = (from: Date, to: Date): number => {
   // calendar-month diff with a fractional day correction so partial months
   // still count.
@@ -115,6 +112,7 @@ const computeValuation = (
   params: Params,
 ): Calc => {
   const r = Number(params.roi) / 100;
+  const n = compoundingsPerYear(params.freq);
   const valDate = new Date(params.valDate);
   let total = 0;
   let count = 0;
@@ -129,7 +127,8 @@ const computeValuation = (
     if (!Number.isFinite(r) || r < 0 || yearsElapsed === 0) {
       valuationPaise += principalPaise;
     } else {
-      valuationPaise += principalPaise * (1 + r * yearsElapsed);
+      const factor = Math.pow(1 + r / n, n * yearsElapsed);
+      valuationPaise += principalPaise * factor;
     }
   }
   return {
@@ -356,13 +355,14 @@ export const ValuationPage = () => {
       <div className="flex items-start gap-2 rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
         <Info className="h-4 w-4 shrink-0" />
         <div>
-          <span className="font-medium text-foreground">Formula:</span> for each scheduled
-          premium installment with due date ≤ valuation date,{' '}
-          <code>value = principal × (1 + ROI × years_since_due)</code>. Total valuation
-          is the sum across all such installments. Whether the premium was actually paid
-          doesn't matter. "Received?" is informational only. Compounding frequency is
-          shown for context — with simple interest it cancels out (months/12 = quarters/4
-          = years/1).
+          <span className="font-medium text-foreground">Formula (compound interest):</span>{' '}
+          for each scheduled premium installment with due date ≤ valuation date,{' '}
+          <code>value = principal × (1 + ROI/n)<sup>n × t</sup></code> where{' '}
+          <code>n</code> is the compounding frequency (12 / 4 / 2 / 1) and{' '}
+          <code>t</code> is the years between due date and valuation date. Total
+          valuation is the sum across all such installments. Paid/unpaid status is
+          ignored. "Received?" is informational only. Higher frequency → higher value
+          for the same ROI.
         </div>
       </div>
 

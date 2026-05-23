@@ -127,8 +127,8 @@ const policy = {
   nomineeRelation: 'Spouse',
   commencementDate: fmt(subYears(today, 2)),
   maturityDate: fmt(addMonths(subYears(today, 2), 20 * 12)),
-  policyTermYears: 20,
-  premiumPaymentTermYears: 15,
+  policyTermMonths: 240,         // 20 years
+  premiumPaymentTermMonths: 180, // 15 years
   branchName: 'LIC Branch 814 — Kolkata',
   agentName: 'Self',
   agentContact: '+91 9876543210',
@@ -147,7 +147,7 @@ const insertPolicy = db.prepare(`
     premium_amount, yearly_total_premium, payment_mode, sum_assured,
     nominee_name, nominee_relation,
     commencement_date, maturity_date,
-    policy_term_years, premium_payment_term_years,
+    policy_term_months, premium_payment_term_months,
     branch_name, agent_name, agent_contact,
     status, maturity_type, maturity_frequency, maturity_account_details, notes
   ) VALUES (
@@ -207,8 +207,8 @@ try {
     policy.nomineeRelation,
     policy.commencementDate,
     policy.maturityDate,
-    policy.policyTermYears,
-    policy.premiumPaymentTermYears,
+    policy.policyTermMonths,
+    policy.premiumPaymentTermMonths,
     policy.branchName,
     policy.agentName,
     policy.agentContact,
