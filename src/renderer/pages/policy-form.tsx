@@ -46,6 +46,7 @@ import { policySchema, type PolicyFormValues } from '../../shared/validation';
 import { generateInstallments } from '../../shared/installments';
 import { formatDate, paiseToRupeesUI } from '@/lib/form-helpers';
 import { AttachmentsPanel } from './attachments-panel';
+import { DateInputDMY } from '@/components/ui/date-input-dmy';
 
 type Props = {
   mode: 'create' | 'edit';
@@ -152,6 +153,11 @@ export const PolicyFormPage = ({ mode, initial, onSaved }: Props) => {
   const [stepIndex, setStepIndex] = useState(0);
   const [stagedFiles, setStagedFiles] = useState<StagedFile[]>([]);
   const [sumAssuredWarning, setSumAssuredWarning] = useState<PolicyFormValues | null>(null);
+  // Track whether the user has manually edited Sum Assured. While untouched in
+  // create mode we keep SA mirrored to 10× yearly premium (IRDA §80C default).
+  const [sumAssuredTouched, setSumAssuredTouched] = useState(
+    () => mode === 'edit' || Boolean(initial?.sumAssured),
+  );
 
   const form = useForm<PolicyFormValues>({
     resolver: zodResolver(policySchema),
@@ -178,6 +184,19 @@ export const PolicyFormPage = ({ mode, initial, onSaved }: Props) => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [watched.premiumAmount, watched.paymentMode]);
+
+  // Auto-fill Sum Assured = 10× yearly premium while the user hasn't manually
+  // edited it. Once they type something, we stop overwriting.
+  useEffect(() => {
+    if (sumAssuredTouched) return;
+    const yp = Number(watched.yearlyTotalPremium);
+    if (!Number.isFinite(yp) || yp <= 0) return;
+    const next = Math.round(yp * 10 * 100) / 100;
+    if (next !== watched.sumAssured) {
+      form.setValue('sumAssured', next, { shouldValidate: false, shouldDirty: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watched.yearlyTotalPremium, sumAssuredTouched]);
 
   // Auto-calc: policy term in MONTHS = full calendar months between commencement and maturity.
   useEffect(() => {
@@ -406,18 +425,41 @@ export const PolicyFormPage = ({ mode, initial, onSaved }: Props) => {
             }}
           />
         </Field>
-        <Field label="Sum assured (₹)" required error={errs.sumAssured?.message}>
+        <Field
+          label="Sum assured (₹)"
+          required
+          error={errs.sumAssured?.message}
+          hint={
+            sumAssuredTouched
+              ? undefined
+              : 'Auto-filled at 10× yearly premium — edit to override'
+          }
+        >
           <Input
             type="number"
             step="0.01"
             {...reg('sumAssured', { valueAsNumber: true })}
+            onChange={(e) => {
+              setSumAssuredTouched(true);
+              reg('sumAssured', { valueAsNumber: true }).onChange(e);
+            }}
           />
         </Field>
         <Field label="Commencement date" required error={errs.commencementDate?.message}>
-          <Input type="date" {...reg('commencementDate')} />
+          <DateInputDMY
+            value={watched.commencementDate ?? ''}
+            onChange={(iso) =>
+              form.setValue('commencementDate', iso, { shouldValidate: true, shouldDirty: true })
+            }
+          />
         </Field>
         <Field label="Maturity date" required error={errs.maturityDate?.message}>
-          <Input type="date" {...reg('maturityDate')} />
+          <DateInputDMY
+            value={watched.maturityDate ?? ''}
+            onChange={(iso) =>
+              form.setValue('maturityDate', iso, { shouldValidate: true, shouldDirty: true })
+            }
+          />
         </Field>
         <Field
           label="Policy term (months)"

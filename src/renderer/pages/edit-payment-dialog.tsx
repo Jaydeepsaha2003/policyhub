@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DateInputDMY } from '@/components/ui/date-input-dmy';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -173,7 +174,7 @@ export const EditPaymentDialog = ({
           </div>
           <div className="space-y-1.5">
             <Label>Due date</Label>
-            <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+            <DateInputDMY value={dueDate} onChange={(iso) => setDueDate(iso)} />
           </div>
           <div className="space-y-1.5">
             <Label>Expected amount (₹)</Label>
@@ -188,16 +189,14 @@ export const EditPaymentDialog = ({
             <>
               <div className="space-y-1.5">
                 <Label>Paid date</Label>
-                <Input
-                  type="date"
+                <DateInputDMY
                   value={paidDate}
-                  max={isoToday()}
-                  onChange={(e) => {
-                    if (e.target.value && e.target.value > isoToday()) {
+                  onChange={(iso) => {
+                    if (iso && iso > isoToday()) {
                       toast.error("Paid date can't be in the future");
                       return;
                     }
-                    setPaidDate(e.target.value);
+                    setPaidDate(iso);
                   }}
                 />
               </div>

@@ -32,6 +32,7 @@ import { toast } from 'sonner';
 import { PeriodToggle, type Period } from '@/components/period-toggle';
 import { BarChart } from '@/components/bar-chart';
 import { Input } from '@/components/ui/input';
+import { DateInputDMY } from '@/components/ui/date-input-dmy';
 
 type Overview = {
   period: Period;
@@ -143,18 +144,16 @@ export const DashboardPage = () => {
           <PeriodToggle value={period} onChange={setPeriod} />
           <div className="flex items-center gap-1 rounded-md border bg-card p-1">
             <span className="px-1.5 text-xs text-muted-foreground">From</span>
-            <Input
-              type="date"
+            <DateInputDMY
               className="h-7 w-36 border-0 bg-transparent px-1 text-xs focus-visible:ring-0"
               value={customFrom}
-              onChange={(e) => setCustomFrom(e.target.value)}
+              onChange={(iso) => setCustomFrom(iso)}
             />
             <span className="px-1.5 text-xs text-muted-foreground">To</span>
-            <Input
-              type="date"
+            <DateInputDMY
               className="h-7 w-36 border-0 bg-transparent px-1 text-xs focus-visible:ring-0"
               value={customTo}
-              onChange={(e) => setCustomTo(e.target.value)}
+              onChange={(iso) => setCustomTo(iso)}
             />
             {(customFrom || customTo) && (
               <Button

@@ -14,6 +14,7 @@ export const IPC = {
   policiesDelete: 'policies:delete',
   policiesSyncMaturity: 'policies:syncMaturity',
   policiesExportExcel: 'policies:exportExcel',
+  valuationExportExcel: 'valuation:exportExcel',
 
   // Payments
   paymentsListByPolicy: 'payments:listByPolicy',

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DateInputDMY } from '@/components/ui/date-input-dmy';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -199,8 +200,8 @@ export const RepaymentsPage = () => {
               ))}
             </SelectContent>
           </Select>
-          <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-44" />
-          <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-44" />
+          <DateInputDMY value={from} onChange={(iso) => setFrom(iso)} className="w-44" placeholder="From (DD-MM-YYYY)" />
+          <DateInputDMY value={to} onChange={(iso) => setTo(iso)} className="w-44" placeholder="To (DD-MM-YYYY)" />
 
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <Button onClick={() => setAddOpen(true)}>
@@ -567,10 +568,9 @@ const AddRepaymentDialog = ({
           </div>
           <div className="space-y-1.5">
             <Label>Expected date</Label>
-            <Input
-              type="date"
+            <DateInputDMY
               value={expectedDate}
-              onChange={(e) => setExpectedDate(e.target.value)}
+              onChange={(iso) => setExpectedDate(iso)}
             />
           </div>
           <div className="space-y-1.5">
@@ -744,17 +744,14 @@ const MarkReceivedDialog = ({
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label>Received date</Label>
-            <Input
-              type="date"
+            <DateInputDMY
               value={receivedDate}
-              max={isoToday()}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v && v > isoToday()) {
+              onChange={(iso) => {
+                if (iso && iso > isoToday()) {
                   toast.error("Received date can't be in the future");
                   return;
                 }
-                setReceivedDate(v);
+                setReceivedDate(iso);
               }}
             />
           </div>

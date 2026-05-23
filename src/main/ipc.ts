@@ -32,6 +32,7 @@ import {
 } from './repo/attachments';
 import { generateTemplate, importTemplate } from './bulk';
 import { exportAllPolicies } from './bulk-policies-export';
+import { exportValuation, type ValuationExportRow } from './valuation-export';
 import {
   forceCloudReminders,
   generateCloudSecret,
@@ -113,6 +114,7 @@ export const registerIpc = () => {
   handleMutate(IPC.policiesDelete, (id: string) => deletePolicy(id));
   handleMutate(IPC.policiesSyncMaturity, (id: string) => generateMaturityRepayments(id));
   handle(IPC.policiesExportExcel, () => exportAllPolicies());
+  handle(IPC.valuationExportExcel, (rows: ValuationExportRow[]) => exportValuation(rows));
 
   // Cloud sync (Google Sheets + Apps Script)
   handle(IPC.cloudSync, () => syncToSheet());

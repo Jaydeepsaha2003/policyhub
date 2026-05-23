@@ -25,10 +25,13 @@ import {
   TableRow,
   TableEmpty,
 } from '@/components/ui/table';
-import { Calculator, Info, RotateCcw } from 'lucide-react';
+import { Calculator, Download, Info, RotateCcw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { formatCurrencyPaise, formatDate, isoToday } from '@/lib/utils';
+import { DateInputDMY } from '@/components/ui/date-input-dmy';
+
+type PaymentMode = 'monthly' | 'quarterly' | 'half_yearly' | 'yearly';
 
 type Policy = {
   id: string;
@@ -39,7 +42,29 @@ type Policy = {
   sumAssured: number;
   commencementDate: string;
   maturityDate: string;
-  paymentMode: string;
+  paymentMode: PaymentMode;
+  premiumPaymentTermMonths: number;
+};
+
+const monthsPerInstallment = (mode: PaymentMode): number => {
+  switch (mode) {
+    case 'monthly':
+      return 1;
+    case 'quarterly':
+      return 3;
+    case 'half_yearly':
+      return 6;
+    case 'yearly':
+      return 12;
+  }
+};
+
+const maxInstallmentsForPolicy = (policy: Policy | undefined): number => {
+  if (!policy) return Number.POSITIVE_INFINITY;
+  const step = monthsPerInstallment(policy.paymentMode);
+  const ppt = Number(policy.premiumPaymentTermMonths) || 0;
+  if (ppt <= 0) return Number.POSITIVE_INFINITY;
+  return Math.max(0, Math.floor(ppt / step));
 };
 
 type Payment = {
@@ -86,18 +111,26 @@ type Calc = {
   paramsUsed: Params;
 };
 
-// COMPOUND INTEREST valuation:
+// COMPOUND + SIMPLE-INTEREST-FOR-PARTIAL valuation (standard Indian banking
+// convention for "n times per year"):
 //   For each scheduled premium installment with due_date <= valuation_date:
-//     n = compoundings per year (12 / 4 / 2 / 1)
-//     t = years between due_date and valuation_date
-//     value_at_val_date = principal * (1 + ROI/n)^(n * t)
+//     n  = compoundings per year (12 / 4 / 2 / 1)
+//     t  = years between due_date and valuation_date
+//     nt = n * t       (number of compounding periods, possibly fractional)
+//     k  = floor(nt)   (whole periods elapsed → compound)
+//     f  = nt - k      (leftover fraction → simple interest on top)
+//     value = principal * (1 + ROI/n)^k * (1 + ROI/n * f)
 //   estimatedValuation = sum of those values
+//
+// Worked example (PPT 12 months @ ₹5000/mo, val 1 Jan 2026, ROI 8% pa):
+//   • Yearly  (n=1): premiums 1-11 mo out get partial-year SI only;
+//     the 12-mo premium gets one full compound year. Total = ₹62,600.
+//   • Monthly (n=12): every gap is a whole month → pure compound. Total = ₹62,664.62.
 //
 // Notes:
 // - "Paid or not" doesn't matter — only the schedule does.
 // - Premiums whose due_date is AFTER valuation_date are skipped.
-// - Compounding frequency DOES affect the result:
-//   Monthly > Quarterly > Half-yearly > Annual (for the same ROI and t > 0).
+// - Higher compounding frequency → more whole periods → higher value.
 const monthsBetween = (from: Date, to: Date): number => {
   // calendar-month diff with a fractional day correction so partial months
   // still count.
@@ -110,14 +143,19 @@ const monthsBetween = (from: Date, to: Date): number => {
 const computeValuation = (
   payments: Payment[],
   params: Params,
+  maxInstallments: number,
 ): Calc => {
   const r = Number(params.roi) / 100;
   const n = compoundingsPerYear(params.freq);
   const valDate = new Date(params.valDate);
+  // Sort by due date so the cap at `maxInstallments` keeps the first N — the
+  // ones that actually fall within the policy's PPT window.
+  const sorted = [...payments].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
   let total = 0;
   let count = 0;
   let valuationPaise = 0;
-  for (const p of payments) {
+  for (const p of sorted) {
+    if (count >= maxInstallments) break;
     const due = new Date(p.dueDate);
     if (Number.isNaN(due.getTime()) || due > valDate) continue;
     const principalPaise = p.expectedAmount;
@@ -127,8 +165,12 @@ const computeValuation = (
     if (!Number.isFinite(r) || r < 0 || yearsElapsed === 0) {
       valuationPaise += principalPaise;
     } else {
-      const factor = Math.pow(1 + r / n, n * yearsElapsed);
-      valuationPaise += principalPaise * factor;
+      const periods = n * yearsElapsed;
+      const wholePeriods = Math.floor(periods);
+      const partial = periods - wholePeriods;
+      const compoundFactor = Math.pow(1 + r / n, wholePeriods);
+      const partialFactor = 1 + (r / n) * partial;
+      valuationPaise += principalPaise * compoundFactor * partialFactor;
     }
   }
   return {
@@ -163,6 +205,7 @@ export const ValuationPage = () => {
   const [perRow, setPerRow] = useState<Record<string, Params>>({});
   const [loading, setLoading] = useState(true);
   const [calculating, setCalculating] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [results, setResults] = useState<Record<string, Calc>>({});
 
   useEffect(() => {
@@ -273,7 +316,12 @@ export const ValuationPage = () => {
         if (!rCache[policyId]) {
           rCache[policyId] = (await window.policyhub.repayments.list({ policyId })) as Repayment[];
         }
-        next[policyId] = computeValuation(pCache[policyId], paramsFor(policyId));
+        const policy = policies.find((x) => x.id === policyId);
+        next[policyId] = computeValuation(
+          pCache[policyId],
+          paramsFor(policyId),
+          maxInstallmentsForPolicy(policy),
+        );
       }
       setPaymentsByPolicy(pCache);
       setRepaymentsByPolicy(rCache);
@@ -282,6 +330,53 @@ export const ValuationPage = () => {
       toast.error('Calculation failed', { description: (err as Error).message });
     } finally {
       setCalculating(false);
+    }
+  };
+
+  const exportExcel = async () => {
+    const resultIds = Object.keys(results);
+    if (resultIds.length === 0) {
+      toast.error('Run Calculate first — nothing to export');
+      return;
+    }
+    setExporting(true);
+    try {
+      const rows = resultIds
+        .map((id) => {
+          const policy = policies.find((x) => x.id === id);
+          const r = results[id];
+          if (!policy || !r) return null;
+          return {
+            policyNo: policy.policyNo,
+            policyHolder: policy.policyHolder,
+            companyName: policy.companyName,
+            planName: policy.planName,
+            paymentMode: policy.paymentMode,
+            premiumPaymentTermMonths: policy.premiumPaymentTermMonths,
+            commencementDate: policy.commencementDate,
+            maturityDate: policy.maturityDate,
+            roiPct: Number(r.paramsUsed.roi),
+            compoundingFrequency: r.paramsUsed.freq,
+            valuationDate: r.paramsUsed.valDate,
+            sumAssuredPaise: policy.sumAssured,
+            totalContributedPaise: r.totalContributed,
+            contributionsCount: r.contributionsCount,
+            estimatedValuationPaise: r.estimatedValuation,
+          };
+        })
+        .filter((x): x is NonNullable<typeof x> => x !== null);
+
+      const out = await window.policyhub.valuation.exportExcel(rows);
+      if (out.saved) {
+        toast.success(
+          `Exported ${out.rowCount} ${out.rowCount === 1 ? 'policy' : 'policies'}`,
+          { description: out.path },
+        );
+      }
+    } catch (err) {
+      toast.error('Export failed', { description: (err as Error).message });
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -331,10 +426,9 @@ export const ValuationPage = () => {
           </div>
           <div className="space-y-1.5">
             <Label>Valuation date</Label>
-            <Input
-              type="date"
+            <DateInputDMY
               value={globalValDate}
-              onChange={(e) => setGlobalValDate(e.target.value)}
+              onChange={(iso) => setGlobalValDate(iso)}
             />
           </div>
           <div className="flex items-end">
@@ -355,14 +449,15 @@ export const ValuationPage = () => {
       <div className="flex items-start gap-2 rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
         <Info className="h-4 w-4 shrink-0" />
         <div>
-          <span className="font-medium text-foreground">Formula (compound interest):</span>{' '}
-          for each scheduled premium installment with due date ≤ valuation date,{' '}
-          <code>value = principal × (1 + ROI/n)<sup>n × t</sup></code> where{' '}
-          <code>n</code> is the compounding frequency (12 / 4 / 2 / 1) and{' '}
-          <code>t</code> is the years between due date and valuation date. Total
-          valuation is the sum across all such installments. Paid/unpaid status is
-          ignored. "Received?" is informational only. Higher frequency → higher value
-          for the same ROI.
+          <span className="font-medium text-foreground">Formula (compound for whole periods, simple interest for the leftover):</span>{' '}
+          for each scheduled premium installment with due date ≤ valuation date, let{' '}
+          <code>nt = n × t</code>, <code>k = ⌊nt⌋</code>, <code>f = nt − k</code>, then{' '}
+          <code>value = principal × (1 + ROI/n)<sup>k</sup> × (1 + ROI/n × f)</code>{' '}
+          where <code>n</code> is compoundings per year (12 / 4 / 2 / 1) and{' '}
+          <code>t</code> is years between due date and valuation date. Total
+          valuation is the sum across all installments within the policy's PPT.
+          Paid/unpaid status is ignored. Total contributed caps at PPT. Higher
+          frequency → higher value for the same ROI.
         </div>
       </div>
 
@@ -381,6 +476,20 @@ export const ValuationPage = () => {
             </Button>
             <Button variant="outline" size="sm" onClick={selectNone}>
               Clear
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={exportExcel}
+              disabled={exporting || Object.keys(results).length === 0}
+              title={
+                Object.keys(results).length === 0
+                  ? 'Run Calculate first to enable export'
+                  : 'Download an .xlsx with the calculated valuations'
+              }
+            >
+              <Download className="h-4 w-4" />
+              {exporting ? 'Exporting…' : 'Download Excel'}
             </Button>
           </div>
         </CardHeader>
@@ -456,11 +565,10 @@ export const ValuationPage = () => {
                         </Select>
                       </TableCell>
                       <TableCell>
-                        <Input
-                          type="date"
+                        <DateInputDMY
                           disabled={!isSelected}
                           value={params.valDate}
-                          onChange={(e) => updateRow(p.id, { valDate: e.target.value })}
+                          onChange={(iso) => updateRow(p.id, { valDate: iso })}
                           className="h-8"
                         />
                       </TableCell>

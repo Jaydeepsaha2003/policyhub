@@ -26,6 +26,13 @@ const api = {
     exportExcel: () =>
       invoke<{ saved: boolean; path?: string; rowCount?: number }>(IPC.policiesExportExcel),
   },
+  valuation: {
+    exportExcel: (rows: unknown[]) =>
+      invoke<{ saved: boolean; path?: string; rowCount?: number }>(
+        IPC.valuationExportExcel,
+        rows,
+      ),
+  },
   payments: {
     listByPolicy: (policyId: string) => invoke(IPC.paymentsListByPolicy, policyId),
     listAll: (filters?: unknown) => invoke(IPC.paymentsListAll, filters),

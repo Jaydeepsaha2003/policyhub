@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DateInputDMY } from '@/components/ui/date-input-dmy';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { isoToday, formatCurrencyPaise, formatDate } from '@/lib/utils';
@@ -85,10 +86,9 @@ export const BulkPayDialog = ({ open, policyId, pending, onClose, onSaved }: Pro
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label>Mark paid up to and including</Label>
-            <Input
-              type="date"
+            <DateInputDMY
               value={upToDate}
-              onChange={(e) => setUpToDate(e.target.value)}
+              onChange={(iso) => setUpToDate(iso)}
             />
           </div>
           <div className="space-y-1.5">

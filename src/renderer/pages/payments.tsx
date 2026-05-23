@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import { DateInputDMY } from '@/components/ui/date-input-dmy';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableEmpty } from '@/components/ui/table';
 import { Download, FileDown, FileUp, Loader2, Pencil } from 'lucide-react';
 import {
@@ -205,19 +206,17 @@ export const PaymentsPage = () => {
             </SelectContent>
           </Select>
 
-          <Input
-            type="date"
+          <DateInputDMY
             value={from}
-            onChange={(e) => setFrom(e.target.value)}
+            onChange={(iso) => setFrom(iso)}
             className="w-44"
-            placeholder="From"
+            placeholder="From (DD-MM-YYYY)"
           />
-          <Input
-            type="date"
+          <DateInputDMY
             value={to}
-            onChange={(e) => setTo(e.target.value)}
+            onChange={(iso) => setTo(iso)}
             className="w-44"
-            placeholder="To"
+            placeholder="To (DD-MM-YYYY)"
           />
 
           <div className="ml-auto flex flex-wrap items-center gap-2">

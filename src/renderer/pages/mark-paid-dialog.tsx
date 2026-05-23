@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DateInputDMY } from '@/components/ui/date-input-dmy';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -102,17 +103,14 @@ export const MarkPaidDialog = ({ paymentId, defaultAmount, onClose, onSaved }: P
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label>Paid date</Label>
-            <Input
-              type="date"
+            <DateInputDMY
               value={paidDate}
-              max={isoToday()}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v && v > isoToday()) {
+              onChange={(iso) => {
+                if (iso && iso > isoToday()) {
                   toast.error("Paid date can't be in the future");
                   return;
                 }
-                setPaidDate(v);
+                setPaidDate(iso);
               }}
             />
           </div>

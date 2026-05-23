@@ -17,6 +17,11 @@ type PolicyHubApi = {
     syncMaturity: (id: string) => Promise<{ created: number; removed: number }>;
     exportExcel: () => Promise<{ saved: boolean; path?: string; rowCount?: number }>;
   };
+  valuation: {
+    exportExcel: (
+      rows: unknown[],
+    ) => Promise<{ saved: boolean; path?: string; rowCount?: number }>;
+  };
   payments: {
     listByPolicy: (policyId: string) => Promise<any[]>;
     listAll: (filters?: any) => Promise<any[]>;
