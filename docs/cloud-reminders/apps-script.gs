@@ -124,6 +124,18 @@ function doPost(e) {
       return jsonResponse({ ok: true, version: '1.0' });
     }
 
+    if (body.kind === 'forceReminders') {
+      // Run the same logic as the daily trigger but bypass the day-of-month
+      // check so the user can fire reminders on demand for testing or one-off
+      // sends outside the schedule.
+      try {
+        const summary = _sendRemindersImpl(true);
+        return jsonResponse({ ok: true, summary: summary });
+      } catch (err) {
+        return jsonResponse({ ok: false, error: String(err) });
+      }
+    }
+
     if (body.kind === 'testEmail') {
       const to = settings.agent_email;
       if (!to) {
@@ -239,9 +251,15 @@ function logSync(ss, source, counts, status) {
 // --- Daily reminder trigger ---
 
 function sendReminders() {
+  _sendRemindersImpl(false);
+}
+
+function _sendRemindersImpl(bypassDayCheck) {
   const today = new Date();
   const dayOfMonth = today.getDate();
-  if (REMINDER_DAYS_OF_MONTH.indexOf(dayOfMonth) === -1) return;
+  if (!bypassDayCheck && REMINDER_DAYS_OF_MONTH.indexOf(dayOfMonth) === -1) {
+    return { skipped: true, reason: 'not a reminder day' };
+  }
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const settings = readSettings(ss);
@@ -253,7 +271,7 @@ function sendReminders() {
       ss, dayOfMonth, '(missing agent_email)', 0, 0, 'SKIP',
       'No agent_email set in Settings tab (cell B2)',
     );
-    return;
+    return { skipped: true, reason: 'no agent_email' };
   }
 
   // Build a lookup from policyNo → holderEmail, holderName by reading Policies tab.
@@ -304,12 +322,14 @@ function sendReminders() {
   const emails = Object.keys(groups);
   if (emails.length === 0) {
     logReminder(ss, dayOfMonth, agentEmail, 0, 0, 'OK', 'Nothing to report');
-    return;
+    return { attempted: 0, succeeded: 0, failed: 0, reason: 'nothing to send' };
   }
 
   const monthLabel = Utilities.formatDate(
     today, Session.getScriptTimeZone(), 'MMMM yyyy',
   );
+
+  let attempted = 0, succeeded = 0, failed = 0;
 
   emails.forEach(function (email) {
     const g = groups[email];
@@ -324,14 +344,19 @@ function sendReminders() {
     body += formatRows(g.overdue) + '\n\n';
     body += '— sent automatically by ' + fromName + ' on day ' + dayOfMonth + ' of the month.';
 
+    attempted++;
     try {
       MailApp.sendEmail({ to: email, subject: subject, body: body, name: fromName });
       logReminder(ss, dayOfMonth, email, g.due.length, g.overdue.length, 'OK',
         g.isAgent ? 'sent to agent (fallback)' : 'sent to holder');
+      succeeded++;
     } catch (err) {
       logReminder(ss, dayOfMonth, email, g.due.length, g.overdue.length, 'FAIL', String(err));
+      failed++;
     }
   });
+
+  return { attempted: attempted, succeeded: succeeded, failed: failed };
 }
 
 function formatRows(rows) {

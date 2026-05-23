@@ -95,6 +95,12 @@ const api = {
       invoke<{ ok: boolean; error?: string }>(IPC.cloudTest),
     testEmail: () =>
       invoke<{ ok: boolean; error?: string }>(IPC.cloudTestEmail),
+    forceReminders: () =>
+      invoke<{
+        ok: boolean;
+        summary?: { attempted: number; succeeded: number; failed: number; skipped?: boolean; reason?: string };
+        error?: string;
+      }>(IPC.cloudForceReminders),
     generateSecret: () => invoke<string>(IPC.cloudGenerateSecret),
   },
   smtp: {

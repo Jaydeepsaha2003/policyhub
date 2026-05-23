@@ -33,6 +33,7 @@ import {
 import { generateTemplate, importTemplate } from './bulk';
 import { exportAllPolicies } from './bulk-policies-export';
 import {
+  forceCloudReminders,
   generateCloudSecret,
   scheduleAutoSync,
   sendCloudTestEmail,
@@ -117,6 +118,7 @@ export const registerIpc = () => {
   handle(IPC.cloudSync, () => syncToSheet());
   handle(IPC.cloudTest, () => testCloudConnection());
   handle(IPC.cloudTestEmail, () => sendCloudTestEmail());
+  handle(IPC.cloudForceReminders, () => forceCloudReminders());
   handle(IPC.cloudGenerateSecret, () => generateCloudSecret());
 
   // Local SMTP test email — sends a sample via Nodemailer to the agent email.

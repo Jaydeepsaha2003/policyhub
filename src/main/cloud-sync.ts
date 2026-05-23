@@ -229,6 +229,39 @@ const send = async (
 export const syncToSheet = (): Promise<CloudSyncResult> => send('sync');
 export const testCloudConnection = (): Promise<CloudSyncResult> => send('test');
 
+// Trigger Apps Script's sendReminders immediately, bypassing the day-of-month
+// check. Returns the summary { attempted, succeeded, failed } from the script.
+export type CloudReminderSummary = {
+  ok: boolean;
+  summary?: { attempted: number; succeeded: number; failed: number; skipped?: boolean; reason?: string };
+  error?: string;
+};
+
+export const forceCloudReminders = async (): Promise<CloudReminderSummary> => {
+  const settings = readSettings();
+  if (!settings.cloudSheetUrl) return { ok: false, error: 'No Web App URL configured' };
+  const secret = readCloudSheetSecret();
+  if (!secret) return { ok: false, error: 'No shared secret configured' };
+  const payload = { kind: 'forceReminders', secret, source: 'PolicyHub' };
+  try {
+    const res = await postJson(settings.cloudSheetUrl, JSON.stringify(payload));
+    if (res.status < 200 || res.status >= 300) {
+      return { ok: false, error: `HTTP ${res.status}: ${res.body.slice(0, 300)}` };
+    }
+    let json: any;
+    try { json = JSON.parse(res.body); } catch {
+      return {
+        ok: false,
+        error: "Response wasn't JSON. Re-paste the latest Apps Script (it must include the 'forceReminders' kind) and re-deploy.",
+      };
+    }
+    if (!json.ok) return { ok: false, error: json.error ?? 'Unknown error' };
+    return { ok: true, summary: json.summary };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
+};
+
 // Apps Script sends a sample email to agent_email cell in the Sheet's Settings tab.
 export const sendCloudTestEmail = async (): Promise<CloudSyncResult> => {
   const settings = readSettings();

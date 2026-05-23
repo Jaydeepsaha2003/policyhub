@@ -99,6 +99,17 @@ type PolicyHubApi = {
     }>;
     test: () => Promise<{ ok: boolean; error?: string }>;
     testEmail: () => Promise<{ ok: boolean; error?: string }>;
+    forceReminders: () => Promise<{
+      ok: boolean;
+      summary?: {
+        attempted: number;
+        succeeded: number;
+        failed: number;
+        skipped?: boolean;
+        reason?: string;
+      };
+      error?: string;
+    }>;
     generateSecret: () => Promise<string>;
   };
   smtp: {

@@ -66,6 +66,7 @@ export const IPC = {
   cloudSync: 'cloud:sync',
   cloudTest: 'cloud:test',
   cloudTestEmail: 'cloud:testEmail',
+  cloudForceReminders: 'cloud:forceReminders',
   cloudGenerateSecret: 'cloud:generateSecret',
   smtpSendTestEmail: 'smtp:sendTestEmail',
 } as const;
