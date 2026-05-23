@@ -71,10 +71,14 @@ type ListedItem = {
   expectedAmount: number;
 };
 
-const collectMonthBuckets = (): {
-  dueThisMonth: ListedItem[];
-  overdue: ListedItem[];
-} => {
+type RoutedItem = ListedItem & {
+  policyHolderEmail: string | null;
+  bucket: 'due' | 'overdue';
+};
+
+// Returns every item that should be reminded about, with the policy holder's
+// email attached so the caller can group by recipient.
+const collectAllItems = (): RoutedItem[] => {
   const sqlite = getRawSqlite();
   const today = format(new Date(), 'yyyy-MM-dd');
   const monthStart = format(startOfMonth(new Date()), 'yyyy-MM-dd');
@@ -88,9 +92,10 @@ const collectMonthBuckets = (): {
     )
     .run(today);
 
-  const due = sqlite
+  const dueRows = sqlite
     .prepare(
       `SELECT p.policy_no AS policyNo, p.policy_holder AS policyHolder,
+              p.holder_email AS policyHolderEmail,
               p.company_name AS companyName,
               pp.due_date AS dueDate, pp.expected_amount AS expectedAmount
          FROM premium_payments pp
@@ -99,11 +104,12 @@ const collectMonthBuckets = (): {
           AND pp.due_date BETWEEN ? AND ?
         ORDER BY pp.due_date ASC`,
     )
-    .all(monthStart, monthEnd) as ListedItem[];
+    .all(monthStart, monthEnd) as Array<ListedItem & { policyHolderEmail: string | null }>;
 
-  const overdue = sqlite
+  const overdueRows = sqlite
     .prepare(
       `SELECT p.policy_no AS policyNo, p.policy_holder AS policyHolder,
+              p.holder_email AS policyHolderEmail,
               p.company_name AS companyName,
               pp.due_date AS dueDate, pp.expected_amount AS expectedAmount
          FROM premium_payments pp
@@ -111,9 +117,12 @@ const collectMonthBuckets = (): {
         WHERE pp.status = 'overdue'
         ORDER BY pp.due_date ASC`,
     )
-    .all() as ListedItem[];
+    .all() as Array<ListedItem & { policyHolderEmail: string | null }>;
 
-  return { dueThisMonth: due, overdue };
+  return [
+    ...dueRows.map((r) => ({ ...r, bucket: 'due' as const })),
+    ...overdueRows.map((r) => ({ ...r, bucket: 'overdue' as const })),
+  ];
 };
 
 const formatList = (items: ListedItem[]): string => {
@@ -181,18 +190,47 @@ const recordMonthly = (entry: {
     );
 };
 
-const collectRecipients = (settings: {
-  reminderRecipient: 'agent' | 'client' | 'both';
-  agentEmail: string | null;
-}): string[] => {
-  // Monthly summary is an agent-facing email by nature. We send it to the
-  // agent regardless; "client/both" doesn't make sense here (clients shouldn't
-  // see other people's policies). Keep this simple: agent email only.
-  return settings.agentEmail ? [settings.agentEmail] : [];
+type RecipientGroup = {
+  email: string;
+  recipientName: string;
+  isAgentFallback: boolean;
+  due: ListedItem[];
+  overdue: ListedItem[];
 };
 
-// Core entry: send today's monthly summary IF today is one of the configured
-// days-of-month. Force=true overrides the date check (used by "Send now").
+// Group every routed item by recipient = holder_email || agent_email.
+const groupByRecipient = (
+  items: RoutedItem[],
+  agentEmail: string,
+  agentName: string,
+): RecipientGroup[] => {
+  const byEmail = new Map<string, RecipientGroup>();
+  for (const it of items) {
+    const holder = it.policyHolderEmail?.trim();
+    const email = holder && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(holder) ? holder : agentEmail;
+    const isAgentFallback = email === agentEmail;
+    if (!byEmail.has(email)) {
+      byEmail.set(email, {
+        email,
+        recipientName: isAgentFallback ? agentName : it.policyHolder,
+        isAgentFallback,
+        due: [],
+        overdue: [],
+      });
+    }
+    const g = byEmail.get(email)!;
+    if (it.bucket === 'due') g.due.push(it);
+    else g.overdue.push(it);
+  }
+  return Array.from(byEmail.values());
+};
+
+// Core entry: send today's per-recipient reminder emails IF today is one of the
+// configured days-of-month. Force=true overrides the date check (used by "Send now").
+//
+// Routing: each policy's reminder goes to its `holder_email`. If a policy has
+// no holder email, those items go to the agent (catch-all). Multiple policies
+// sharing the same email are consolidated into one email per recipient.
 export const runMonthlyReminders = async (force = false): Promise<RemindersRunResult> => {
   const settings = readSettings();
   const today = new Date();
@@ -205,50 +243,60 @@ export const runMonthlyReminders = async (force = false): Promise<RemindersRunRe
     }
   }
 
-  const recipients = collectRecipients(settings);
-  if (recipients.length === 0) {
-    return { attempted: 0, succeeded: 0, failed: 0, reason: 'no agent email configured' };
+  if (!settings.agentEmail) {
+    return {
+      attempted: 0,
+      succeeded: 0,
+      failed: 0,
+      reason: 'no agent email configured (used as fallback for policies without holder email)',
+    };
   }
 
-  const { dueThisMonth, overdue } = collectMonthBuckets();
+  const items = collectAllItems();
+  if (items.length === 0) {
+    return { attempted: 0, succeeded: 0, failed: 0, reason: 'no items to remind about' };
+  }
 
-  // If there's literally nothing to report and we're on a scheduled day,
-  // still send a short "all caught up" email so the agent knows the system is alive.
-  const dueTotal = sumAmt(dueThisMonth);
-  const overdueTotal = sumAmt(overdue);
+  const agentName = settings.fromName || 'PolicyHub';
+  const groups = groupByRecipient(items, settings.agentEmail, agentName);
 
-  const subject = `PolicyHub: Premium summary for ${format(today, 'MMMM yyyy')} (day ${dayOfMonth})`;
   const tpl =
     settings.emailTemplateMonthly ??
-    `Premium summary for {{month}}\n\nDue this month: {{due_count}} ({{due_total}})\n{{due_list}}\n\nOverdue: {{overdue_count}} ({{overdue_total}})\n{{overdue_list}}\n`;
-  const body = renderTemplate(tpl, {
-    month: format(today, 'MMMM yyyy'),
-    day_of_month: dayOfMonth,
-    due_count: dueThisMonth.length,
-    due_total: formatCurrencyINR(dueTotal),
-    due_list: formatList(dueThisMonth),
-    overdue_count: overdue.length,
-    overdue_total: formatCurrencyINR(overdueTotal),
-    overdue_list: formatList(overdue),
-    agent_name: settings.fromName ?? '',
-  });
+    `Hello {{recipient_name}},\n\nPremium summary for {{month}}.\n\nDUE THIS MONTH ({{due_count}}, total {{due_total}}):\n{{due_list}}\n\nOVERDUE ({{overdue_count}}, total {{overdue_total}}):\n{{overdue_list}}\n\nSent by PolicyHub on day {{day_of_month}}.`;
 
   let attempted = 0;
   let succeeded = 0;
   let failed = 0;
 
-  for (const to of recipients) {
-    if (!force && alreadySentToday(sendDate, to)) continue;
+  for (const g of groups) {
+    if (!force && alreadySentToday(sendDate, g.email)) continue;
+    const dueTotal = sumAmt(g.due);
+    const overdueTotal = sumAmt(g.overdue);
+    const subject = `PolicyHub: Premium summary for ${format(today, 'MMMM yyyy')} (day ${dayOfMonth})`;
+    const body = renderTemplate(tpl, {
+      recipient_name: g.recipientName,
+      holder: g.recipientName,
+      agent_name: agentName,
+      month: format(today, 'MMMM yyyy'),
+      day_of_month: dayOfMonth,
+      due_count: g.due.length,
+      due_total: formatCurrencyINR(dueTotal),
+      due_list: formatList(g.due),
+      overdue_count: g.overdue.length,
+      overdue_total: formatCurrencyINR(overdueTotal),
+      overdue_list: formatList(g.overdue),
+    });
+
     attempted++;
     try {
-      await sendMail(to, subject, body);
+      await sendMail(g.email, subject, body);
       recordMonthly({
         sendDate,
         dayOfMonth,
-        emailTo: to,
+        emailTo: g.email,
         subject,
-        dueCount: dueThisMonth.length,
-        overdueCount: overdue.length,
+        dueCount: g.due.length,
+        overdueCount: g.overdue.length,
         success: true,
       });
       succeeded++;
@@ -256,10 +304,10 @@ export const runMonthlyReminders = async (force = false): Promise<RemindersRunRe
       recordMonthly({
         sendDate,
         dayOfMonth,
-        emailTo: to,
+        emailTo: g.email,
         subject,
-        dueCount: dueThisMonth.length,
-        overdueCount: overdue.length,
+        dueCount: g.due.length,
+        overdueCount: g.overdue.length,
         success: false,
         errorMessage: (err as Error).message,
       });

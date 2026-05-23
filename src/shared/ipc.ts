@@ -65,7 +65,9 @@ export const IPC = {
   appResetData: 'app:resetData',
   cloudSync: 'cloud:sync',
   cloudTest: 'cloud:test',
+  cloudTestEmail: 'cloud:testEmail',
   cloudGenerateSecret: 'cloud:generateSecret',
+  smtpSendTestEmail: 'smtp:sendTestEmail',
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];

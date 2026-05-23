@@ -141,6 +141,7 @@ const applySchema = (sqlite: Database.Database) => {
       cloud_sheet_url TEXT,
       cloud_sheet_secret_encrypted TEXT,
       cloud_sync_on_quit INTEGER NOT NULL DEFAULT 0,
+      cloud_sync_on_change INTEGER NOT NULL DEFAULT 0,
       cloud_last_synced_at TEXT
     );
 
@@ -212,6 +213,7 @@ const applySchema = (sqlite: Database.Database) => {
   addColumnIfMissing(sqlite, 'settings', 'cloud_sheet_secret_encrypted', 'TEXT');
   addColumnIfMissing(sqlite, 'settings', 'cloud_sync_on_quit', 'INTEGER NOT NULL DEFAULT 0');
   addColumnIfMissing(sqlite, 'settings', 'cloud_last_synced_at', 'TEXT');
+  addColumnIfMissing(sqlite, 'settings', 'cloud_sync_on_change', 'INTEGER NOT NULL DEFAULT 0');
 
   // Migration: rename policy_term_years → policy_term_months and multiply by 12.
   const policiesCols = sqlite.prepare(`PRAGMA table_info(policies)`).all() as Array<{
@@ -272,9 +274,9 @@ const addColumnIfMissing = (
   }
 };
 
-const DEFAULT_MONTHLY_TEMPLATE = `Hello {{agent_name}},
+const DEFAULT_MONTHLY_TEMPLATE = `Hello {{recipient_name}},
 
-Here is your premium summary for {{month}}.
+Here is the premium summary for {{month}}.
 
 DUE THIS MONTH ({{due_count}} item(s), total {{due_total}}):
 {{due_list}}
@@ -282,7 +284,8 @@ DUE THIS MONTH ({{due_count}} item(s), total {{due_total}}):
 OVERDUE ({{overdue_count}} item(s), total {{overdue_total}}):
 {{overdue_list}}
 
-Sent automatically by PolicyHub on day {{day_of_month}} of the month.`;
+Sent automatically by PolicyHub on day {{day_of_month}} of the month.
+— {{agent_name}}`;
 
 const DEFAULT_DUE_SOON_TEMPLATE = `Hello {{holder}},
 

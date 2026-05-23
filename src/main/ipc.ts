@@ -32,7 +32,13 @@ import {
 } from './repo/attachments';
 import { generateTemplate, importTemplate } from './bulk';
 import { exportAllPolicies } from './bulk-policies-export';
-import { generateCloudSecret, syncToSheet, testCloudConnection } from './cloud-sync';
+import {
+  generateCloudSecret,
+  scheduleAutoSync,
+  sendCloudTestEmail,
+  syncToSheet,
+  testCloudConnection,
+} from './cloud-sync';
 import {
   cancelRepayment,
   createRepaymentBatch,
@@ -68,6 +74,21 @@ const handle = <T>(channel: string, fn: (...args: any[]) => Promise<T> | T) => {
   });
 };
 
+// Same as handle() but fires the debounced cloud auto-sync after a successful
+// mutation. Use for any IPC that creates/updates/deletes DB data.
+const handleMutate = <T>(channel: string, fn: (...args: any[]) => Promise<T> | T) => {
+  ipcMain.handle(channel, async (_event, ...args) => {
+    try {
+      const data = await fn(...args);
+      scheduleAutoSync();
+      return { ok: true, data };
+    } catch (err) {
+      console.error(`[ipc] ${channel} failed`, err);
+      return { ok: false, error: (err as Error).message };
+    }
+  });
+};
+
 export const registerIpc = () => {
   // Settings
   handle(IPC.settingsGet, () => readSettings());
@@ -83,30 +104,67 @@ export const registerIpc = () => {
   // Policies
   handle(IPC.policiesList, () => listPolicies());
   handle(IPC.policiesGet, (id: string) => getPolicy(id));
-  handle(IPC.policiesCreate, (input: any) => createPolicy(input));
-  handle(IPC.policiesUpdate, (id: string, input: any) => {
+  handleMutate(IPC.policiesCreate, (input: any) => createPolicy(input));
+  handleMutate(IPC.policiesUpdate, (id: string, input: any) => {
     updatePolicy(id, input);
     return getPolicy(id);
   });
-  handle(IPC.policiesDelete, (id: string) => deletePolicy(id));
-  handle(IPC.policiesSyncMaturity, (id: string) => generateMaturityRepayments(id));
+  handleMutate(IPC.policiesDelete, (id: string) => deletePolicy(id));
+  handleMutate(IPC.policiesSyncMaturity, (id: string) => generateMaturityRepayments(id));
   handle(IPC.policiesExportExcel, () => exportAllPolicies());
 
   // Cloud sync (Google Sheets + Apps Script)
   handle(IPC.cloudSync, () => syncToSheet());
   handle(IPC.cloudTest, () => testCloudConnection());
+  handle(IPC.cloudTestEmail, () => sendCloudTestEmail());
   handle(IPC.cloudGenerateSecret, () => generateCloudSecret());
+
+  // Local SMTP test email — sends a sample via Nodemailer to the agent email.
+  handle(IPC.smtpSendTestEmail, async () => {
+    const s = readSettings();
+    if (!s.agentEmail) throw new Error('Set Agent email in Settings first');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const emailMod = require('./email') as typeof import('./email');
+    // sendMail isn't exported; use a tiny wrapper through testSmtp's transport.
+    // Simplest: piggyback on the runReminders path by directly calling nodemailer here.
+    const nm = require('nodemailer') as typeof import('nodemailer');
+    if (!s.smtpHost || !s.smtpPort || !s.smtpUser || !s.fromEmail) {
+      throw new Error('SMTP host / port / user / from email must be set');
+    }
+    const { readSmtpPassword } = require('./repo/settings') as typeof import('./repo/settings');
+    const pw = readSmtpPassword();
+    if (!pw) throw new Error('SMTP password is not set');
+    const tx = nm.createTransport({
+      host: s.smtpHost,
+      port: s.smtpPort,
+      secure: s.smtpPort === 465,
+      auth: { user: s.smtpUser, pass: pw },
+    });
+    await tx.sendMail({
+      from: s.fromName ? `"${s.fromName}" <${s.fromEmail}>` : s.fromEmail,
+      to: s.agentEmail,
+      subject: 'PolicyHub: SMTP test email',
+      text:
+        'This is a test email from PolicyHub (local SMTP).\n\n' +
+        'If you received this, your SMTP credentials are working — premium reminders will be delivered the same way.\n\n' +
+        'Sent at: ' +
+        new Date().toISOString(),
+    });
+    return { sent: true, to: s.agentEmail };
+    // (emailMod kept as a reference to silence unused-var)
+    void emailMod;
+  });
 
   // Payments
   handle(IPC.paymentsListByPolicy, (policyId: string) => listPaymentsByPolicy(policyId));
   handle(IPC.paymentsListAll, (filters: any) => listAllPayments(filters));
-  handle(IPC.paymentsMarkPaid, (input: any) => markPaid(input));
-  handle(
+  handleMutate(IPC.paymentsMarkPaid, (input: any) => markPaid(input));
+  handleMutate(
     IPC.paymentsMarkAllPaidUpTo,
     (input: { policyId: string; upToDate: string; paymentMethod?: string }) =>
       markAllPaidUpTo(input.policyId, input.upToDate, input.paymentMethod),
   );
-  handle(IPC.paymentsUpdate, (input: any) => updatePayment(input));
+  handleMutate(IPC.paymentsUpdate, (input: any) => updatePayment(input));
   handle(IPC.paymentsUpcoming, (limit?: number) => upcomingPremiums(limit ?? 10));
 
   // Dashboard
@@ -143,21 +201,21 @@ export const registerIpc = () => {
 
   // Bulk payment template
   handle(IPC.bulkDownloadTemplate, () => generateTemplate());
-  handle(IPC.bulkImportTemplate, () => importTemplate());
+  handleMutate(IPC.bulkImportTemplate, () => importTemplate());
 
   // Repayments
   handle(IPC.repaymentsList, (filters: any) => listRepaymentsWithPolicy(filters));
-  handle(IPC.repaymentsCreateBatch, (input: any) => createRepaymentBatch(input));
-  handle(IPC.repaymentsMarkReceived, (input: any) => markRepaymentReceived(input));
-  handle(IPC.repaymentsUpdate, (input: any) => updateRepayment(input));
-  handle(IPC.repaymentsCancel, (id: string) => cancelRepayment(id));
-  handle(IPC.repaymentsDelete, (id: string) => deleteRepayment(id));
+  handleMutate(IPC.repaymentsCreateBatch, (input: any) => createRepaymentBatch(input));
+  handleMutate(IPC.repaymentsMarkReceived, (input: any) => markRepaymentReceived(input));
+  handleMutate(IPC.repaymentsUpdate, (input: any) => updateRepayment(input));
+  handleMutate(IPC.repaymentsCancel, (id: string) => cancelRepayment(id));
+  handleMutate(IPC.repaymentsDelete, (id: string) => deleteRepayment(id));
   handle(IPC.repaymentsDownloadTemplate, () => generateRepaymentTemplate());
-  handle(IPC.repaymentsImportTemplate, () => importRepaymentTemplate());
+  handleMutate(IPC.repaymentsImportTemplate, () => importRepaymentTemplate());
 
   // Attachments
   handle(IPC.attachmentsList, (policyId: string) => listAttachments(policyId));
-  handle(IPC.attachmentsAdd, async (policyId: string) => {
+  handleMutate(IPC.attachmentsAdd, async (policyId: string) => {
     const { canceled, filePaths } = await dialog.showOpenDialog({
       title: 'Attach policy document(s)',
       properties: ['openFile', 'multiSelections'],
@@ -195,12 +253,12 @@ export const registerIpc = () => {
       };
     });
   });
-  handle(
+  handleMutate(
     IPC.attachmentsCommitPaths,
     (input: { policyId: string; paths: string[] }) =>
       addAttachmentsFromPaths(input.policyId, input.paths),
   );
-  handle(IPC.attachmentsRemove, (id: string) => removeAttachment(id));
+  handleMutate(IPC.attachmentsRemove, (id: string) => removeAttachment(id));
   handle(IPC.attachmentsOpen, async (id: string) => {
     const p = getAttachmentPath(id);
     if (!p) throw new Error('Attachment not found');

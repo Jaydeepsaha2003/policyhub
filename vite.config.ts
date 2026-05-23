@@ -19,5 +19,9 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    fs: {
+      // Allow reading files from the project root (for ?raw imports of docs/).
+      allow: [path.resolve(__dirname)],
+    },
   },
 });

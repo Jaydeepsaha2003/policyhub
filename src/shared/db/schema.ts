@@ -140,6 +140,7 @@ export const settings = sqliteTable('settings', {
   cloudSheetUrl: text('cloud_sheet_url'),
   cloudSheetSecretEncrypted: text('cloud_sheet_secret_encrypted'),
   cloudSyncOnQuit: integer('cloud_sync_on_quit', { mode: 'boolean' }).notNull().default(false),
+  cloudSyncOnChange: integer('cloud_sync_on_change', { mode: 'boolean' }).notNull().default(false),
   cloudLastSyncedAt: text('cloud_last_synced_at'),
 });
 

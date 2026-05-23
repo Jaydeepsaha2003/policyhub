@@ -93,7 +93,13 @@ const api = {
       }>(IPC.cloudSync),
     test: () =>
       invoke<{ ok: boolean; error?: string }>(IPC.cloudTest),
+    testEmail: () =>
+      invoke<{ ok: boolean; error?: string }>(IPC.cloudTestEmail),
     generateSecret: () => invoke<string>(IPC.cloudGenerateSecret),
+  },
+  smtp: {
+    sendTestEmail: () =>
+      invoke<{ sent: boolean; to: string }>(IPC.smtpSendTestEmail),
   },
 };
 

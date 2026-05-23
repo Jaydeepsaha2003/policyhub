@@ -176,6 +176,24 @@ const send = async (
 
   try {
     const res = await postJson(url, JSON.stringify(payload));
+
+    // Detect Google's "you must be signed in" HTML response. That's what shows
+    // up when the deployment isn't "Anyone with the link".
+    const looksLikeGoogleLogin =
+      /<!doctype html/i.test(res.body) &&
+      (/accounts\.google\.com/i.test(res.body) ||
+        /Sign in/i.test(res.body) ||
+        res.status === 401 ||
+        res.status === 403);
+    if (looksLikeGoogleLogin) {
+      return {
+        ok: false,
+        status: res.status,
+        error:
+          "Google is asking us to sign in — the deployment isn't open. Fix: open the Apps Script editor → Deploy → Manage deployments → edit the active one → set 'Who has access' to 'Anyone with the link'. Save and re-deploy, then paste the NEW URL here.",
+      };
+    }
+
     if (res.status < 200 || res.status >= 300) {
       return {
         ok: false,
@@ -211,6 +229,63 @@ const send = async (
 export const syncToSheet = (): Promise<CloudSyncResult> => send('sync');
 export const testCloudConnection = (): Promise<CloudSyncResult> => send('test');
 
+// Apps Script sends a sample email to agent_email cell in the Sheet's Settings tab.
+export const sendCloudTestEmail = async (): Promise<CloudSyncResult> => {
+  const settings = readSettings();
+  if (!settings.cloudSheetUrl) return { ok: false, error: 'No Web App URL configured' };
+  const secret = readCloudSheetSecret();
+  if (!secret) return { ok: false, error: 'No shared secret configured' };
+
+  const payload = { kind: 'testEmail', secret, source: 'PolicyHub' };
+  try {
+    const res = await postJson(settings.cloudSheetUrl, JSON.stringify(payload));
+    if (res.status < 200 || res.status >= 300) {
+      return { ok: false, status: res.status, error: `HTTP ${res.status}: ${res.body.slice(0, 300)}` };
+    }
+    let json: any;
+    try { json = JSON.parse(res.body); } catch {
+      return {
+        ok: false,
+        error: "Response wasn't JSON. Re-deploy the script (Anyone with the link) and use the new URL.",
+      };
+    }
+    if (!json.ok) return { ok: false, error: json.error ?? 'Unknown error' };
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
+};
+
 // Helper to generate a random 32-byte hex secret.
 export const generateCloudSecret = (): string =>
   crypto.randomBytes(24).toString('base64url');
+
+// ---- Debounced auto-sync (fires after a write IF cloud_sync_on_change is on) ----
+
+let autoSyncTimer: NodeJS.Timeout | null = null;
+let autoSyncInFlight = false;
+const AUTO_SYNC_DEBOUNCE_MS = 5_000;
+
+export const scheduleAutoSync = () => {
+  if (autoSyncTimer) clearTimeout(autoSyncTimer);
+  autoSyncTimer = setTimeout(async () => {
+    autoSyncTimer = null;
+    if (autoSyncInFlight) {
+      // Another sync was running; schedule another tick after it ends.
+      scheduleAutoSync();
+      return;
+    }
+    try {
+      const s = readSettings();
+      if (!s.cloudSyncOnChange) return;
+      if (!s.cloudSheetUrl || !s.cloudSheetSecretSet) return;
+      autoSyncInFlight = true;
+      const res = await syncToSheet();
+      if (!res.ok) console.error('[cloud] auto-sync failed:', res.error);
+    } catch (err) {
+      console.error('[cloud] auto-sync threw:', err);
+    } finally {
+      autoSyncInFlight = false;
+    }
+  }, AUTO_SYNC_DEBOUNCE_MS);
+};

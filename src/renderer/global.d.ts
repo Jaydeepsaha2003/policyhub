@@ -98,7 +98,11 @@ type PolicyHubApi = {
       error?: string;
     }>;
     test: () => Promise<{ ok: boolean; error?: string }>;
+    testEmail: () => Promise<{ ok: boolean; error?: string }>;
     generateSecret: () => Promise<string>;
+  };
+  smtp: {
+    sendTestEmail: () => Promise<{ sent: boolean; to: string }>;
   };
 };
 
@@ -106,6 +110,12 @@ declare global {
   interface Window {
     policyhub: PolicyHubApi;
   }
+}
+
+// Vite ?raw imports — content loaded as a string at build time.
+declare module '*?raw' {
+  const content: string;
+  export default content;
 }
 
 export {};

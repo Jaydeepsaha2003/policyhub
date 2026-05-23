@@ -85,6 +85,7 @@ export type SettingsUpdateInput = Partial<{
   cloudSheetUrl: string | null;
   cloudSheetSecret: string | null; // plaintext from form; encrypted before save
   cloudSyncOnQuit: boolean;
+  cloudSyncOnChange: boolean;
   cloudLastSyncedAt: string | null;
 }>;
 
@@ -126,6 +127,9 @@ export const updateSettings = (patch: SettingsUpdateInput) => {
   }
   if ('cloudSyncOnQuit' in patch && patch.cloudSyncOnQuit !== undefined) {
     update.cloudSyncOnQuit = patch.cloudSyncOnQuit;
+  }
+  if ('cloudSyncOnChange' in patch && patch.cloudSyncOnChange !== undefined) {
+    update.cloudSyncOnChange = patch.cloudSyncOnChange;
   }
   if ('cloudLastSyncedAt' in patch) update.cloudLastSyncedAt = patch.cloudLastSyncedAt;
 

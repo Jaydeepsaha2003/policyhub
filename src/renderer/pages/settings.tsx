@@ -19,6 +19,7 @@ import {
   Copy,
   CheckCircle2,
 } from 'lucide-react';
+import { CloudSetupGuide } from '@/components/cloud-setup-guide';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -53,6 +54,7 @@ type SettingsView = {
   cloudSheetUrl: string | null;
   cloudSheetSecretSet: boolean;
   cloudSyncOnQuit: boolean;
+  cloudSyncOnChange: boolean;
   cloudLastSyncedAt: string | null;
 };
 
@@ -65,6 +67,8 @@ export const SettingsPage = () => {
   const [cloudSecretInput, setCloudSecretInput] = useState('');
   const [cloudTesting, setCloudTesting] = useState(false);
   const [cloudSyncing, setCloudSyncing] = useState(false);
+  const [cloudEmailing, setCloudEmailing] = useState(false);
+  const [smtpEmailing, setSmtpEmailing] = useState(false);
 
   const load = async () => {
     try {
@@ -127,6 +131,7 @@ export const SettingsPage = () => {
         startAtLogin: s.startAtLogin,
         cloudSheetUrl: s.cloudSheetUrl,
         cloudSyncOnQuit: s.cloudSyncOnQuit,
+        cloudSyncOnChange: s.cloudSyncOnChange,
       };
       if (smtpPassword) payload.smtpPassword = smtpPassword;
       if (cloudSecretInput) payload.cloudSheetSecret = cloudSecretInput;
@@ -232,7 +237,30 @@ export const SettingsPage = () => {
               <Input value={s.fromName ?? ''} onChange={(e) => update({ fromName: e.target.value })} />
             </Field>
           </div>
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={smtpEmailing}
+              onClick={async () => {
+                if (!s.agentEmail) {
+                  toast.error('Set Agent email below first');
+                  return;
+                }
+                setSmtpEmailing(true);
+                try {
+                  const res = await window.policyhub.smtp.sendTestEmail();
+                  toast.success(`Test email sent to ${res.to}`);
+                } catch (err) {
+                  toast.error('Could not send', { description: (err as Error).message });
+                } finally {
+                  setSmtpEmailing(false);
+                }
+              }}
+            >
+              {smtpEmailing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+              Send test email
+            </Button>
             <Button variant="outline" size="sm" onClick={test} disabled={testing}>
               {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
               Test connection
@@ -313,11 +341,20 @@ export const SettingsPage = () => {
             />
           </Field>
           <p className="text-xs text-muted-foreground">
-            Merge variables for the monthly summary: <code>{'{{month}}'}</code>,{' '}
-            <code>{'{{day_of_month}}'}</code>, <code>{'{{due_count}}'}</code>,{' '}
-            <code>{'{{due_total}}'}</code>, <code>{'{{due_list}}'}</code>,{' '}
-            <code>{'{{overdue_count}}'}</code>, <code>{'{{overdue_total}}'}</code>,{' '}
-            <code>{'{{overdue_list}}'}</code>, <code>{'{{agent_name}}'}</code>
+            Merge variables for the monthly summary:{' '}
+            <code>{'{{recipient_name}}'}</code> (the holder's name, or the agent
+            name when sent to the agent fallback), <code>{'{{holder}}'}</code>{' '}
+            (alias of recipient_name), <code>{'{{agent_name}}'}</code>,{' '}
+            <code>{'{{month}}'}</code>, <code>{'{{day_of_month}}'}</code>,{' '}
+            <code>{'{{due_count}}'}</code>, <code>{'{{due_total}}'}</code>,{' '}
+            <code>{'{{due_list}}'}</code>, <code>{'{{overdue_count}}'}</code>,{' '}
+            <code>{'{{overdue_total}}'}</code>, <code>{'{{overdue_list}}'}</code>
+          </p>
+          <p className="text-xs text-muted-foreground">
+            <span className="font-medium">Routing:</span> each policy's reminder goes to its{' '}
+            <code>holder_email</code> if set, otherwise to the Agent email below as
+            a catch-all. Multiple policies sharing the same email are consolidated
+            into one email.
           </p>
         </CardContent>
       </Card>
@@ -330,12 +367,16 @@ export const SettingsPage = () => {
           </CardTitle>
           <CardDescription>
             Push your policy data to a Google Sheet so reminders fire from
-            Google's servers — even when this laptop is off. See{' '}
-            <code>docs/cloud-reminders/setup.md</code> for the one-time setup
-            (~10 minutes).
+            Google's servers — even when this laptop is off. One-time setup is
+            ~10 minutes. Click <span className="font-medium">Show setup guide</span>{' '}
+            below for the full step-by-step.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div>
+            <CloudSetupGuide />
+          </div>
+
           <Field label="Apps Script Web App URL">
             <Input
               value={s.cloudSheetUrl ?? ''}
@@ -408,6 +449,21 @@ export const SettingsPage = () => {
 
           <div className="flex items-center justify-between rounded-md border p-3">
             <div>
+              <div className="text-sm font-medium">Auto-sync on every change</div>
+              <div className="text-xs text-muted-foreground">
+                Push to the Sheet ~5 seconds after every create / edit / delete
+                you do in PolicyHub. Rapid successive changes are coalesced
+                into one sync.
+              </div>
+            </div>
+            <Switch
+              checked={s.cloudSyncOnChange}
+              onCheckedChange={(c) => update({ cloudSyncOnChange: c })}
+            />
+          </div>
+
+          <div className="flex items-center justify-between rounded-md border p-3">
+            <div>
               <div className="text-sm font-medium">Auto-sync on quit</div>
               <div className="text-xs text-muted-foreground">
                 Push the latest data to the Sheet every time you quit
@@ -468,6 +524,30 @@ export const SettingsPage = () => {
             >
               {cloudSyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudUpload className="h-4 w-4" />}
               Sync now
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              disabled={cloudEmailing || !s.cloudSheetUrl}
+              onClick={async () => {
+                setCloudEmailing(true);
+                try {
+                  const res = await window.policyhub.cloud.testEmail();
+                  if (res.ok) {
+                    toast.success('Test email sent — check the inbox of the address in the Sheet\'s Settings B2 cell.');
+                  } else {
+                    toast.error('Test email failed', { description: res.error });
+                  }
+                } catch (err) {
+                  toast.error('Test email failed', { description: (err as Error).message });
+                } finally {
+                  setCloudEmailing(false);
+                }
+              }}
+            >
+              {cloudEmailing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Send test email (cloud)
             </Button>
 
             {s.cloudLastSyncedAt && (

@@ -124,6 +124,36 @@ function doPost(e) {
       return jsonResponse({ ok: true, version: '1.0' });
     }
 
+    if (body.kind === 'testEmail') {
+      const to = settings.agent_email;
+      if (!to) {
+        return jsonResponse({
+          ok: false,
+          error: 'No agent_email set in the Sheet\'s Settings tab (cell B2).',
+        });
+      }
+      const subjectPrefix = settings.subject_prefix || 'PolicyHub';
+      const fromName = settings.from_name || 'PolicyHub';
+      try {
+        MailApp.sendEmail({
+          to: to,
+          subject: subjectPrefix + ': Cloud test email',
+          body:
+            'This is a test email from PolicyHub Cloud Reminders.\n\n' +
+            'If you got this, the Apps Script + Gmail pipeline is working — your\n' +
+            'scheduled reminders will be delivered the same way.\n\n' +
+            'Sent at: ' + new Date().toISOString(),
+          name: fromName,
+        });
+        // Log it.
+        const log = ss.getSheetByName(REMINDER_LOG_TAB);
+        if (log) log.appendRow([new Date(), 0, to, 0, 0, 'TEST', '']);
+        return jsonResponse({ ok: true, to: to });
+      } catch (err) {
+        return jsonResponse({ ok: false, error: String(err) });
+      }
+    }
+
     if (body.kind === 'sync') {
       writeTable(ss, POLICIES_TAB, body.policies || []);
       writeTable(ss, INSTALLMENTS_TAB, body.installments || []);
@@ -215,54 +245,93 @@ function sendReminders() {
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const settings = readSettings(ss);
-  const to = settings.agent_email;
+  const agentEmail = settings.agent_email;
   const fromName = settings.from_name || 'PolicyHub';
   const subjectPrefix = settings.subject_prefix || 'PolicyHub';
-  if (!to) {
-    logReminder(ss, dayOfMonth, '(missing agent_email)', 0, 0, 'SKIP', 'No agent_email set');
+  if (!agentEmail) {
+    logReminder(
+      ss, dayOfMonth, '(missing agent_email)', 0, 0, 'SKIP',
+      'No agent_email set in Settings tab (cell B2)',
+    );
     return;
+  }
+
+  // Build a lookup from policyNo → holderEmail, holderName by reading Policies tab.
+  const policies = readTable(ss, POLICIES_TAB);
+  const policyByNo = {};
+  for (const p of policies) {
+    if (!p.policyNo) continue;
+    policyByNo[String(p.policyNo)] = {
+      holderName: p.policyHolder || '',
+      holderEmail: (p.holderEmail || '').toString().trim(),
+    };
   }
 
   const installments = readTable(ss, INSTALLMENTS_TAB);
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
   const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
 
-  const due = [];
-  const overdue = [];
+  // Group items by recipient = holder_email || agent_email.
+  const groups = {}; // email -> { recipientName, isAgent, due:[], overdue:[] }
+  const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
   for (const r of installments) {
     if (r.status === 'paid') continue;
     if (!r.dueDate) continue;
     const dueDate = new Date(r.dueDate);
     if (isNaN(dueDate.getTime())) continue;
-    if (dueDate >= monthStart && dueDate <= monthEnd) due.push(r);
-    else if (dueDate < monthStart) overdue.push(r);
+
+    let bucket = null;
+    if (dueDate >= monthStart && dueDate <= monthEnd) bucket = 'due';
+    else if (dueDate < monthStart) bucket = 'overdue';
+    if (!bucket) continue;
+
+    const policyMeta = policyByNo[String(r.policyNo)] || { holderName: '', holderEmail: '' };
+    const holder = policyMeta.holderEmail;
+    const email = holder && emailRe.test(holder) ? holder : agentEmail;
+    if (!groups[email]) {
+      const isAgent = email === agentEmail;
+      groups[email] = {
+        recipientName: isAgent ? fromName : (policyMeta.holderName || r.policyHolder || ''),
+        isAgent: isAgent,
+        due: [],
+        overdue: [],
+      };
+    }
+    groups[email][bucket].push(r);
   }
 
-  if (due.length === 0 && overdue.length === 0) {
-    logReminder(ss, dayOfMonth, to, 0, 0, 'OK', 'Nothing to report');
+  const emails = Object.keys(groups);
+  if (emails.length === 0) {
+    logReminder(ss, dayOfMonth, agentEmail, 0, 0, 'OK', 'Nothing to report');
     return;
   }
 
   const monthLabel = Utilities.formatDate(
-    today,
-    Session.getScriptTimeZone(),
-    'MMMM yyyy',
+    today, Session.getScriptTimeZone(), 'MMMM yyyy',
   );
-  const subject = subjectPrefix + ': Premium summary for ' + monthLabel + ' (day ' + dayOfMonth + ')';
 
-  let body = 'Premium summary for ' + monthLabel + '\n\n';
-  body += 'DUE THIS MONTH (' + due.length + '):\n';
-  body += formatRows(due) + '\n\n';
-  body += 'OVERDUE (' + overdue.length + '):\n';
-  body += formatRows(overdue) + '\n\n';
-  body += '— sent automatically by ' + fromName + ' on day ' + dayOfMonth + ' of the month.';
+  emails.forEach(function (email) {
+    const g = groups[email];
+    const subject =
+      subjectPrefix + ': Premium summary for ' + monthLabel + ' (day ' + dayOfMonth + ')';
 
-  try {
-    MailApp.sendEmail({ to: to, subject: subject, body: body, name: fromName });
-    logReminder(ss, dayOfMonth, to, due.length, overdue.length, 'OK', '');
-  } catch (err) {
-    logReminder(ss, dayOfMonth, to, due.length, overdue.length, 'FAIL', String(err));
-  }
+    let body = 'Hello ' + g.recipientName + ',\n\n';
+    body += 'Premium summary for ' + monthLabel + '.\n\n';
+    body += 'DUE THIS MONTH (' + g.due.length + '):\n';
+    body += formatRows(g.due) + '\n\n';
+    body += 'OVERDUE (' + g.overdue.length + '):\n';
+    body += formatRows(g.overdue) + '\n\n';
+    body += '— sent automatically by ' + fromName + ' on day ' + dayOfMonth + ' of the month.';
+
+    try {
+      MailApp.sendEmail({ to: email, subject: subject, body: body, name: fromName });
+      logReminder(ss, dayOfMonth, email, g.due.length, g.overdue.length, 'OK',
+        g.isAgent ? 'sent to agent (fallback)' : 'sent to holder');
+    } catch (err) {
+      logReminder(ss, dayOfMonth, email, g.due.length, g.overdue.length, 'FAIL', String(err));
+    }
+  });
 }
 
 function formatRows(rows) {
