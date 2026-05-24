@@ -94,9 +94,30 @@ if (!gotLock) {
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // Touch the DB so the file is created and schema applied on first run.
-  getDb();
+  // If schema-init throws (e.g. an imported DB has a column conflict), surface
+  // it as a dialog rather than crashing silently.
+  try {
+    getDb();
+  } catch (err) {
+    const message = (err as Error).message ?? String(err);
+    console.error('[main] FATAL: getDb() failed', err);
+    const { dialog } = await import('electron');
+    await dialog.showMessageBox({
+      type: 'error',
+      title: 'PolicyHub — database init failed',
+      message: 'The database could not be opened.',
+      detail:
+        message +
+        '\n\nThe app will now quit. Your data is at:\n' +
+        app.getPath('userData') +
+        '\n\nTry: rename policies.db.before-import → policies.db (if you recently used Import database), or use Settings → Reset all data on the previous install.',
+      buttons: ['Quit'],
+    });
+    app.exit(1);
+    return;
+  }
   registerIpc();
   createWindow();
   initTray(() => mainWindow);

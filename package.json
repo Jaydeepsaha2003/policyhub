@@ -1,6 +1,6 @@
 {
   "name": "policyhub",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Local-first desktop app for managing life, health, and general insurance policies",
   "main": "dist-electron/main/main.js",
   "author": "Merkatura",
@@ -129,7 +129,7 @@
       "createStartMenuShortcut": true,
       "shortcutName": "PolicyHub",
       "include": "build/installer.nsh",
-      "deleteAppDataOnUninstall": true
+      "deleteAppDataOnUninstall": false
     },
     "linux": {
       "target": [
