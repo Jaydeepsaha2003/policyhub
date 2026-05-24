@@ -5,7 +5,15 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableEmpty } from '@/components/ui/table';
-import { Plus, Search, FileSpreadsheet, Loader2 } from 'lucide-react';
+import { Plus, Search, FileSpreadsheet, Loader2, FileDown, FileUp } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useRouter } from '@/lib/router';
 import { formatCurrencyPaise } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -59,6 +67,14 @@ export const PoliciesPage = () => {
   const [modeFilter, setModeFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [exporting, setExporting] = useState(false);
+  const [downloadingTpl, setDownloadingTpl] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    totalRows: number;
+    created: number;
+    skipped: number;
+    errors: { row: number; reason: string; policyNo?: string }[];
+  } | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -145,6 +161,63 @@ export const PoliciesPage = () => {
           </Select>
           <Button
             variant="outline"
+            disabled={downloadingTpl}
+            onClick={async () => {
+              setDownloadingTpl(true);
+              try {
+                const r = await window.policyhub.policies.downloadTemplate();
+                if (r?.saved) {
+                  toast.success('Policy template saved', { description: r.path });
+                }
+              } catch (err) {
+                toast.error('Could not generate template', {
+                  description: (err as Error).message,
+                });
+              } finally {
+                setDownloadingTpl(false);
+              }
+            }}
+          >
+            {downloadingTpl ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FileDown className="h-4 w-4" />
+            )}
+            Download policy template
+          </Button>
+          <Button
+            variant="outline"
+            disabled={importing}
+            onClick={async () => {
+              setImporting(true);
+              try {
+                const r = await window.policyhub.policies.importTemplate();
+                if (!r.picked) return;
+                setImportResult({
+                  totalRows: r.totalRows,
+                  created: r.created,
+                  skipped: r.skipped,
+                  errors: r.errors,
+                });
+                // Refresh the list.
+                const fresh = (await window.policyhub.policies.list()) as Policy[];
+                setRows(fresh);
+              } catch (err) {
+                toast.error('Upload failed', { description: (err as Error).message });
+              } finally {
+                setImporting(false);
+              }
+            }}
+          >
+            {importing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FileUp className="h-4 w-4" />
+            )}
+            Upload policy template
+          </Button>
+          <Button
+            variant="outline"
             disabled={exporting}
             onClick={async () => {
               setExporting(true);
@@ -226,6 +299,58 @@ export const PoliciesPage = () => {
           )}
         </CardContent>
       </Card>
+
+      <Dialog
+        open={Boolean(importResult)}
+        onOpenChange={(o) => !o && setImportResult(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Policy upload result</DialogTitle>
+            <DialogDescription>
+              New policies were imported from the template.
+            </DialogDescription>
+          </DialogHeader>
+          {importResult && (
+            <div className="space-y-3 text-sm">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-md border p-3 text-center">
+                  <div className="text-2xl font-semibold text-emerald-600">
+                    {importResult.created}
+                  </div>
+                  <div className="text-xs text-muted-foreground">Created</div>
+                </div>
+                <div className="rounded-md border p-3 text-center">
+                  <div className="text-2xl font-semibold text-muted-foreground">
+                    {importResult.skipped}
+                  </div>
+                  <div className="text-xs text-muted-foreground">Skipped</div>
+                </div>
+                <div className="rounded-md border p-3 text-center">
+                  <div className="text-2xl font-semibold text-destructive">
+                    {importResult.errors.length}
+                  </div>
+                  <div className="text-xs text-muted-foreground">Errors</div>
+                </div>
+              </div>
+              {importResult.errors.length > 0 && (
+                <div className="max-h-64 overflow-auto rounded-md border p-3 text-xs">
+                  {importResult.errors.map((e, i) => (
+                    <div key={i} className="border-b py-1 last:border-0">
+                      <span className="font-medium">Row {e.row}</span>
+                      {e.policyNo && <> · {e.policyNo}</>}
+                      <span className="text-destructive"> — {e.reason}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setImportResult(null)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

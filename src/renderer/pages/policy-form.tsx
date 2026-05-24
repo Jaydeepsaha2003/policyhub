@@ -232,27 +232,31 @@ export const PolicyFormPage = ({ mode, initial, onSaved }: Props) => {
   }, [watched.commencementDate, watched.paymentMode, watched.premiumPaymentTermMonths]);
 
   const onSubmit = async (values: PolicyFormValues) => {
-    // Hard rule: PPT cannot exceed policy term.
-    if (
-      Number.isFinite(values.premiumPaymentTermMonths) &&
-      Number.isFinite(values.policyTermMonths) &&
-      values.premiumPaymentTermMonths > values.policyTermMonths
-    ) {
-      toast.error(
-        `Premium payment term (${values.premiumPaymentTermMonths} months) can't exceed policy term (${values.policyTermMonths} months).`,
-      );
-      return;
-    }
-    // Sum-assured rule: SA should be ≥ 10× yearly premium (IRDA Section 80C).
-    // Warn but allow override.
-    if (
-      Number.isFinite(values.sumAssured) &&
-      Number.isFinite(values.yearlyTotalPremium) &&
-      values.yearlyTotalPremium > 0 &&
-      values.sumAssured < 10 * values.yearlyTotalPremium
-    ) {
-      setSumAssuredWarning(values);
-      return;
+    // Matured policies bypass the premium-side cross-field checks because
+    // they may have been added with placeholder premium data.
+    if (values.status !== 'matured') {
+      // Hard rule: PPT cannot exceed policy term.
+      if (
+        Number.isFinite(values.premiumPaymentTermMonths) &&
+        Number.isFinite(values.policyTermMonths) &&
+        values.premiumPaymentTermMonths > values.policyTermMonths
+      ) {
+        toast.error(
+          `Premium payment term (${values.premiumPaymentTermMonths} months) can't exceed policy term (${values.policyTermMonths} months).`,
+        );
+        return;
+      }
+      // Sum-assured rule: SA should be ≥ 10× yearly premium (IRDA Section 80C).
+      // Warn but allow override.
+      if (
+        Number.isFinite(values.sumAssured) &&
+        Number.isFinite(values.yearlyTotalPremium) &&
+        values.yearlyTotalPremium > 0 &&
+        values.sumAssured < 10 * values.yearlyTotalPremium
+      ) {
+        setSumAssuredWarning(values);
+        return;
+      }
     }
     await doSave(values);
   };
@@ -314,7 +318,8 @@ export const PolicyFormPage = ({ mode, initial, onSaved }: Props) => {
 
     // Cross-field check: PPT must be ≤ policy term. Root-level Zod refines
     // don't fire on per-field form.trigger, so check it here too.
-    if (step.key === 'premium') {
+    // Matured policies bypass this since premium fields are not required.
+    if (step.key === 'premium' && watched.status !== 'matured') {
       const ppt = Number(watched.premiumPaymentTermMonths);
       const pt = Number(watched.policyTermMonths);
       if (Number.isFinite(ppt) && Number.isFinite(pt) && ppt > pt) {
@@ -382,17 +387,31 @@ export const PolicyFormPage = ({ mode, initial, onSaved }: Props) => {
     </div>
   );
 
+  const isMatured = watched.status === 'matured';
+
   const premiumSection = (
     <div className="space-y-4">
+      {isMatured && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+          <span className="font-semibold">Matured policy mode.</span> Premium amount,
+          payment mode, commencement date, policy term and PPT can be left blank or as
+          placeholders — only maturity date, sum assured, and the maturity payout
+          account fields below matter. No premium installments will be generated.
+        </div>
+      )}
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Premium amount (₹)" required error={errs.premiumAmount?.message}>
+        <Field
+          label={`Premium amount (₹)${isMatured ? ' — optional for matured' : ''}`}
+          required={!isMatured}
+          error={errs.premiumAmount?.message}
+        >
           <Input
             type="number"
             step="0.01"
             {...reg('premiumAmount', { valueAsNumber: true })}
           />
         </Field>
-        <Field label="Payment mode" required>
+        <Field label={`Payment mode${isMatured ? ' — optional' : ''}`} required={!isMatured}>
           <Select
             value={watched.paymentMode}
             onValueChange={(v) => form.setValue('paymentMode', v as any)}
@@ -445,7 +464,11 @@ export const PolicyFormPage = ({ mode, initial, onSaved }: Props) => {
             }}
           />
         </Field>
-        <Field label="Commencement date" required error={errs.commencementDate?.message}>
+        <Field
+          label={`Commencement date${isMatured ? ' — optional' : ''}`}
+          required={!isMatured}
+          error={errs.commencementDate?.message}
+        >
           <DateInputDMY
             value={watched.commencementDate ?? ''}
             onChange={(iso) =>
@@ -478,8 +501,8 @@ export const PolicyFormPage = ({ mode, initial, onSaved }: Props) => {
           />
         </Field>
         <Field
-          label="Premium payment term (months)"
-          required
+          label={`Premium payment term (months)${isMatured ? ' — optional' : ''}`}
+          required={!isMatured}
           error={
             errs.premiumPaymentTermMonths?.message ??
             (Number.isFinite(watched.premiumPaymentTermMonths) &&

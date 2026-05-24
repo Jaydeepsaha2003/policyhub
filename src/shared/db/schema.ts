@@ -52,6 +52,9 @@ export const policies = sqliteTable('policies', {
   updatedAt: text('updated_at')
     .notNull()
     .default(sql`(CURRENT_TIMESTAMP)`),
+  // Soft-delete timestamp. Null = live; non-null = in recycle bin, scheduled
+  // for permanent deletion 90 days after this timestamp.
+  deletedAt: text('deleted_at'),
 });
 
 export const premiumPayments = sqliteTable('premium_payments', {

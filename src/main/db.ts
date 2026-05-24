@@ -79,7 +79,8 @@ const applySchema = (sqlite: Database.Database) => {
       maturity_account_holder TEXT,
       notes TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      deleted_at TEXT
     );
 
     CREATE TABLE IF NOT EXISTS premium_payments (
@@ -214,6 +215,21 @@ const applySchema = (sqlite: Database.Database) => {
   addColumnIfMissing(sqlite, 'settings', 'cloud_sync_on_quit', 'INTEGER NOT NULL DEFAULT 0');
   addColumnIfMissing(sqlite, 'settings', 'cloud_last_synced_at', 'TEXT');
   addColumnIfMissing(sqlite, 'settings', 'cloud_sync_on_change', 'INTEGER NOT NULL DEFAULT 0');
+  addColumnIfMissing(sqlite, 'policies', 'deleted_at', 'TEXT');
+
+  // Auto-purge: hard-delete policies that have been in the recycle bin for
+  // more than 90 days.
+  try {
+    sqlite
+      .prepare(
+        `DELETE FROM policies
+          WHERE deleted_at IS NOT NULL
+            AND datetime(deleted_at, '+90 days') < datetime('now')`,
+      )
+      .run();
+  } catch (err) {
+    console.error('[db] recycle-bin auto-purge failed', err);
+  }
 
   // Migration: rename policy_term_years → policy_term_months and multiply by 12.
   const policiesCols = sqlite.prepare(`PRAGMA table_info(policies)`).all() as Array<{

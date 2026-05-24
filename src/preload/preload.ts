@@ -25,6 +25,20 @@ const api = {
       invoke<{ created: number; removed: number }>(IPC.policiesSyncMaturity, id),
     exportExcel: () =>
       invoke<{ saved: boolean; path?: string; rowCount?: number }>(IPC.policiesExportExcel),
+    downloadTemplate: () =>
+      invoke<{ saved: boolean; path?: string }>(IPC.policiesDownloadTemplate),
+    importTemplate: () =>
+      invoke<{
+        picked: boolean;
+        file?: string;
+        totalRows: number;
+        created: number;
+        skipped: number;
+        errors: { row: number; reason: string; policyNo?: string }[];
+      }>(IPC.policiesImportTemplate),
+    listDeleted: () => invoke<any[]>(IPC.policiesListDeleted),
+    restore: (id: string) => invoke(IPC.policiesRestore, id),
+    purge: (id: string) => invoke(IPC.policiesPurge, id),
   },
   valuation: {
     exportExcel: (rows: unknown[]) =>
@@ -90,6 +104,8 @@ const api = {
     backupDb: () => invoke(IPC.appBackupDb),
     exportJson: () => invoke(IPC.appExportJson),
     resetData: () => invoke<{ reset: boolean }>(IPC.appResetData),
+    importDb: () =>
+      invoke<{ imported: boolean; backedUpTo?: string }>(IPC.appImportDb),
   },
   cloud: {
     sync: () =>

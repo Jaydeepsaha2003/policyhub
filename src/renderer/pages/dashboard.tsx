@@ -26,7 +26,12 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { useRouter } from '@/lib/router';
-import { formatCurrencyPaise, formatDate, isoToday } from '@/lib/utils';
+import {
+  formatCurrencyPaise,
+  formatCurrencyCompactPaise,
+  formatDate,
+  isoToday,
+} from '@/lib/utils';
 import { MarkPaidDialog } from './mark-paid-dialog';
 import { toast } from 'sonner';
 import { PeriodToggle, type Period } from '@/components/period-toggle';
@@ -194,19 +199,22 @@ export const DashboardPage = () => {
         <MetricCard
           icon={<TrendingUp className="h-4 w-4 text-emerald-500" />}
           label="Collected"
-          value={overview ? formatCurrencyPaise(overview.collectedInWindow) : '—'}
+          value={overview ? formatCurrencyCompactPaise(overview.collectedInWindow) : '—'}
+          fullValue={overview ? formatCurrencyPaise(overview.collectedInWindow) : undefined}
           description={`${overview?.premiumsPaidInWindow ?? 0} payments`}
         />
         <MetricCard
           icon={<IndianRupee className="h-4 w-4 text-red-500" />}
           label="Outstanding overdue"
-          value={overview ? formatCurrencyPaise(overview.outstandingOverdueAmount) : '—'}
+          value={overview ? formatCurrencyCompactPaise(overview.outstandingOverdueAmount) : '—'}
+          fullValue={overview ? formatCurrencyPaise(overview.outstandingOverdueAmount) : undefined}
           description={`${overview?.overdueCount ?? 0} item(s)`}
         />
         <MetricCard
           icon={<ReceiptText className="h-4 w-4 text-amber-500" />}
-          label="Late fees + penalty"
-          value={overview ? formatCurrencyPaise(overview.latePenaltyInWindow) : '—'}
+          label="GST + late fees"
+          value={overview ? formatCurrencyCompactPaise(overview.latePenaltyInWindow) : '—'}
+          fullValue={overview ? formatCurrencyPaise(overview.latePenaltyInWindow) : undefined}
           description="Collected in window"
         />
       </div>
@@ -386,20 +394,27 @@ const MetricCard = ({
   icon,
   label,
   value,
+  fullValue,
   description,
 }: {
   icon: React.ReactNode;
   label: string;
   value: number | string;
+  fullValue?: string;
   description: string;
 }) => (
   <Card>
     <CardContent className="p-5">
       <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
         {icon}
-        {label}
+        <span className="truncate">{label}</span>
       </div>
-      <div className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">{value}</div>
+      <div
+        className="mt-2 truncate text-2xl font-semibold tracking-tight tabular-nums"
+        title={fullValue ?? (typeof value === 'string' ? value : String(value))}
+      >
+        {value}
+      </div>
       <div className="mt-1 text-xs text-muted-foreground">{description}</div>
     </CardContent>
   </Card>

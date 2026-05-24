@@ -63,7 +63,7 @@ export const MarkPaidDialog = ({ paymentId, defaultAmount, onClose, onSaved }: P
     const pen = Number(penalty);
     const late = Number(lateFee);
     if (Number.isFinite(pen) && pen < 0) {
-      toast.error('Penalty cannot be negative');
+      toast.error('GST cannot be negative');
       return;
     }
     if (Number.isFinite(late) && late < 0) {
@@ -144,7 +144,7 @@ export const MarkPaidDialog = ({ paymentId, defaultAmount, onClose, onSaved }: P
             <Input value={receipt} onChange={(e) => setReceipt(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label>Penalty (₹)</Label>
+            <Label>GST (₹)</Label>
             <Input
               type="number"
               step="0.01"

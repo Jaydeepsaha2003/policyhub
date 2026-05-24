@@ -112,7 +112,7 @@ export const EditPaymentDialog = ({
     }
     const pen = Number(penalty);
     if (!Number.isFinite(pen) || pen < 0) {
-      toast.error('Penalty cannot be negative');
+      toast.error('GST cannot be negative');
       return;
     }
     const lf = Number(lateFee);
@@ -257,7 +257,7 @@ export const EditPaymentDialog = ({
             </>
           )}
           <div className="space-y-1.5">
-            <Label>Penalty (₹)</Label>
+            <Label>GST (₹)</Label>
             <Input
               type="number"
               step="0.01"

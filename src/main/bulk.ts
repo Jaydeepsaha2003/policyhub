@@ -105,7 +105,7 @@ export const generateTemplate = async (): Promise<{
     // Editable from here on:
     'Paid Date',          // J — yyyy-mm-dd or excel date
     'Paid Amount (₹)',    // K
-    'Penalty (₹)',        // L
+    'GST (₹)',            // L (DB column: penalty_amount)
     'Late Fee (₹)',       // M
     'Payment Source',     // N
     'Name of Source',     // O
@@ -147,7 +147,7 @@ export const generateTemplate = async (): Promise<{
     { width: 12 }, // I status
     { width: 14 }, // J paid date
     { width: 16 }, // K paid amount
-    { width: 12 }, // L penalty
+    { width: 12 }, // L GST
     { width: 12 }, // M late fee
     { width: 16 }, // N payment source
     { width: 22 }, // O name of source
@@ -172,7 +172,7 @@ export const generateTemplate = async (): Promise<{
       // editable blanks:
       '',                                                  // J paid date
       Number((r.expectedAmountPaise / 100).toFixed(2)),    // K paid amount = expected
-      0,                                                   // L penalty
+      0,                                                   // L GST
       0,                                                   // M late fee
       '',                                                  // N payment source
       '',                                                  // O name of source
@@ -197,7 +197,7 @@ export const generateTemplate = async (): Promise<{
     // Number formats.
     row.getCell(8).numFmt = '#,##0.00';  // expected amount
     row.getCell(11).numFmt = '#,##0.00'; // paid amount
-    row.getCell(12).numFmt = '#,##0.00'; // penalty
+    row.getCell(12).numFmt = '#,##0.00'; // GST
     row.getCell(13).numFmt = '#,##0.00'; // late fee
     row.getCell(7).numFmt = 'yyyy-mm-dd';  // due date
     row.getCell(10).numFmt = 'yyyy-mm-dd'; // paid date
@@ -231,7 +231,7 @@ export const generateTemplate = async (): Promise<{
     '2. Fill in the YELLOW columns to record a payment:',
     '     • Paid Date (yyyy-mm-dd format works best; Excel dates also work)',
     '     • Paid Amount (₹)  — pre-filled to the expected amount; change if different',
-    '     • Penalty (₹) — leave 0 if none',
+    '     • GST (₹) — leave 0 if none',
     '     • Late Fee (₹) — leave 0 if none',
     '     • Payment Source (Bank / Credit Card / UPI / Cheque / Cash / Auto-debit / Other)',
     '     • Name of Source (e.g. HDFC Bank, HDFC Infinia, ...)',
@@ -430,7 +430,7 @@ export const importTemplate = async (): Promise<ImportResult> => {
     if (penalty !== null && penalty < 0) {
       result.errors.push({
         row: r,
-        reason: 'Penalty cannot be negative',
+        reason: 'GST cannot be negative',
         policyNo,
         installmentNo: installmentNoRaw ?? undefined,
       });

@@ -8,7 +8,10 @@ import {
   createPolicy,
   deletePolicy,
   getPolicy,
+  listDeletedPolicies,
   listPolicies,
+  purgePolicy,
+  restorePolicy,
   updatePolicy,
 } from './repo/policies';
 import {
@@ -32,6 +35,7 @@ import {
 } from './repo/attachments';
 import { generateTemplate, importTemplate } from './bulk';
 import { exportAllPolicies } from './bulk-policies-export';
+import { generatePolicyTemplate, importPolicyTemplate } from './bulk-policies-import';
 import { exportValuation, type ValuationExportRow } from './valuation-export';
 import {
   forceCloudReminders,
@@ -114,6 +118,11 @@ export const registerIpc = () => {
   handleMutate(IPC.policiesDelete, (id: string) => deletePolicy(id));
   handleMutate(IPC.policiesSyncMaturity, (id: string) => generateMaturityRepayments(id));
   handle(IPC.policiesExportExcel, () => exportAllPolicies());
+  handle(IPC.policiesDownloadTemplate, () => generatePolicyTemplate());
+  handleMutate(IPC.policiesImportTemplate, () => importPolicyTemplate());
+  handle(IPC.policiesListDeleted, () => listDeletedPolicies());
+  handleMutate(IPC.policiesRestore, (id: string) => restorePolicy(id));
+  handleMutate(IPC.policiesPurge, (id: string) => purgePolicy(id));
   handle(IPC.valuationExportExcel, (rows: ValuationExportRow[]) => exportValuation(rows));
 
   // Cloud sync (Google Sheets + Apps Script)
@@ -289,6 +298,71 @@ export const registerIpc = () => {
     fs.copyFileSync(getDbPath(), filePath);
     return { saved: true, path: filePath };
   });
+  handle(IPC.appImportDb, async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      title: 'Import database — pick a PolicyHub .db backup file',
+      properties: ['openFile'],
+      filters: [{ name: 'SQLite database', extensions: ['db'] }],
+    });
+    if (canceled || filePaths.length === 0) return { imported: false };
+
+    const sourcePath = filePaths[0];
+    // Sanity check: does the file look like a SQLite database?
+    try {
+      const handle = fs.openSync(sourcePath, 'r');
+      const header = Buffer.alloc(16);
+      fs.readSync(handle, header, 0, 16, 0);
+      fs.closeSync(handle);
+      if (header.toString('utf8', 0, 15) !== 'SQLite format 3') {
+        throw new Error('Selected file is not a SQLite database');
+      }
+    } catch (err) {
+      throw new Error(`Could not read file: ${(err as Error).message}`);
+    }
+
+    const confirm = await dialog.showMessageBox({
+      type: 'warning',
+      buttons: ['Cancel', 'Import & replace'],
+      defaultId: 0,
+      cancelId: 0,
+      title: 'Import database',
+      message:
+        'This will REPLACE your current PolicyHub data with the contents of the selected .db file.',
+      detail:
+        'The current database will be backed up to policies.db.before-import next to the active database. The app will then quit and relaunch using the imported data. Make sure you have your own backup if you need to roll back.',
+    });
+    if (confirm.response !== 1) return { imported: false };
+
+    // Close current DB so we can replace the files.
+    closeDb();
+
+    const userDataDir = app.getPath('userData');
+    const dbPath = path.join(userDataDir, 'policies.db');
+    const walPath = path.join(userDataDir, 'policies.db-wal');
+    const shmPath = path.join(userDataDir, 'policies.db-shm');
+    const backupPath = path.join(userDataDir, 'policies.db.before-import');
+
+    try {
+      // Save the current DB as a side-by-side backup.
+      if (fs.existsSync(dbPath)) {
+        fs.copyFileSync(dbPath, backupPath);
+      }
+      // Remove WAL/SHM so the new DB starts clean.
+      for (const p of [walPath, shmPath]) {
+        if (fs.existsSync(p)) fs.unlinkSync(p);
+      }
+      // Copy the imported file in place.
+      fs.copyFileSync(sourcePath, dbPath);
+    } catch (err) {
+      throw new Error(`Import failed: ${(err as Error).message}`);
+    }
+
+    // Relaunch so the app reopens the freshly imported DB.
+    app.relaunch();
+    app.exit(0);
+    return { imported: true, backedUpTo: backupPath };
+  });
+
   handle(IPC.appResetData, async () => {
     const confirm = await dialog.showMessageBox({
       type: 'warning',

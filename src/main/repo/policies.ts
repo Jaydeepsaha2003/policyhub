@@ -1,5 +1,5 @@
 import { v4 as uuid } from 'uuid';
-import { and, asc, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, isNull, isNotNull, lte, sql } from 'drizzle-orm';
 import { getDb } from '../db';
 import { policies, premiumPayments } from '../../shared/db/schema';
 import { generateInstallments } from '../../shared/installments';
@@ -7,7 +7,23 @@ import { rupeesToPaise, type PolicyFormInput } from '../../shared/types';
 
 export const listPolicies = () => {
   const db = getDb();
-  return db.select().from(policies).orderBy(asc(policies.policyHolder)).all();
+  return db
+    .select()
+    .from(policies)
+    .where(isNull(policies.deletedAt))
+    .orderBy(asc(policies.policyHolder))
+    .all();
+};
+
+// Recycle bin — soft-deleted policies waiting to be restored or purged.
+export const listDeletedPolicies = () => {
+  const db = getDb();
+  return db
+    .select()
+    .from(policies)
+    .where(isNotNull(policies.deletedAt))
+    .orderBy(asc(policies.deletedAt))
+    .all();
 };
 
 export const getPolicy = (id: string) => {
@@ -56,7 +72,11 @@ export const createPolicy = (input: PolicyFormInput) => {
   db.insert(policies)
     .values({ id, ...data })
     .run();
-  regenerateInstallments(id);
+  // Don't generate premium installments for matured policies — they're a
+  // historical record only.
+  if (data.status !== 'matured') {
+    regenerateInstallments(id);
+  }
   // Auto-create maturity payout repayments. Import lazily to avoid circular deps.
   try {
     const { generateMaturityRepayments } = require('./repayments') as typeof import('./repayments');
@@ -83,7 +103,7 @@ export const updatePolicy = (id: string, input: PolicyFormInput) => {
     before.premiumPaymentTermMonths !== data.premiumPaymentTermMonths ||
     before.premiumAmount !== data.premiumAmount;
 
-  if (scheduleChanged) {
+  if (scheduleChanged && data.status !== 'matured') {
     regenerateInstallments(id);
   }
 
@@ -104,9 +124,33 @@ export const updatePolicy = (id: string, input: PolicyFormInput) => {
   }
 };
 
+// Soft-delete: marks deleted_at = now. Auto-purged after 90 days at app start.
 export const deletePolicy = (id: string) => {
   const db = getDb();
+  db.update(policies)
+    .set({ deletedAt: new Date().toISOString() })
+    .where(eq(policies.id, id))
+    .run();
+};
+
+export const restorePolicy = (id: string) => {
+  const db = getDb();
+  db.update(policies).set({ deletedAt: null }).where(eq(policies.id, id)).run();
+};
+
+export const purgePolicy = (id: string) => {
+  const db = getDb();
   db.delete(policies).where(eq(policies.id, id)).run();
+};
+
+export const countActivePolicies = () => {
+  const db = getDb();
+  const row = db
+    .select({ c: sql<number>`count(*)` })
+    .from(policies)
+    .where(and(eq(policies.status, 'active'), isNull(policies.deletedAt)))
+    .get();
+  return row?.c ?? 0;
 };
 
 // Regenerate only `pending` rows; preserve paid history.
@@ -163,16 +207,6 @@ export const regenerateInstallments = (policyId: string) => {
       db.delete(premiumPayments).where(eq(premiumPayments.id, leftover.id)).run();
     }
   }
-};
-
-export const countActivePolicies = () => {
-  const db = getDb();
-  const row = db
-    .select({ c: sql<number>`count(*)` })
-    .from(policies)
-    .where(eq(policies.status, 'active'))
-    .get();
-  return row?.c ?? 0;
 };
 
 export const countPremiumsDueInRange = (fromIso: string, toIso: string) => {

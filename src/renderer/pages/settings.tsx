@@ -18,8 +18,10 @@ import {
   KeyRound,
   Copy,
   CheckCircle2,
+  Upload,
 } from 'lucide-react';
 import { CloudSetupGuide } from '@/components/cloud-setup-guide';
+import { RecycleBinDialog } from '@/components/recycle-bin-dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -569,10 +571,29 @@ export const SettingsPage = () => {
             <Database className="h-4 w-4" />
             Backup database
           </Button>
+          <Button
+            variant="outline"
+            onClick={async () => {
+              try {
+                const r = await window.policyhub.app.importDb();
+                if (r?.imported) {
+                  toast.success('Database imported — app will restart', {
+                    description: `Previous DB backed up to: ${r.backedUpTo}`,
+                  });
+                }
+              } catch (err) {
+                toast.error('Import failed', { description: (err as Error).message });
+              }
+            }}
+          >
+            <Upload className="h-4 w-4" />
+            Import database
+          </Button>
           <Button variant="outline" onClick={exportJson}>
             <Download className="h-4 w-4" />
             Export all data as JSON
           </Button>
+          <RecycleBinDialog />
           <div className="ml-auto">
             <AlertDialog>
               <AlertDialogTrigger asChild>

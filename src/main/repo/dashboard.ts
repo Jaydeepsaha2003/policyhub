@@ -73,7 +73,7 @@ export const buildOverview = (
     sqlite.prepare(sql).get(...params) as T;
 
   const totalActivePolicies = get<{ c: number }>(
-    `SELECT COUNT(*) AS c FROM policies WHERE status = 'active'`,
+    `SELECT COUNT(*) AS c FROM policies WHERE status = 'active' AND deleted_at IS NULL`,
   ).c;
 
   const premiumsDueInWindow = get<{ c: number }>(
@@ -91,7 +91,7 @@ export const buildOverview = (
   ).c;
 
   const policiesMaturingInWindow = get<{ c: number }>(
-    `SELECT COUNT(*) AS c FROM policies WHERE maturity_date BETWEEN ? AND ?`,
+    `SELECT COUNT(*) AS c FROM policies WHERE maturity_date BETWEEN ? AND ? AND deleted_at IS NULL`,
     from,
     to,
   ).c;
@@ -229,7 +229,7 @@ export const maturingPolicies = (
               company_name AS companyName, plan_name AS planName,
               maturity_date AS maturityDate, sum_assured AS sumAssured
          FROM policies
-        WHERE maturity_date BETWEEN ? AND ?
+        WHERE maturity_date BETWEEN ? AND ? AND deleted_at IS NULL
         ORDER BY maturity_date ASC`,
     )
     .all(from, to);

@@ -254,7 +254,7 @@ export const PaymentsPage = () => {
                   <TableHead className="text-right">Paid amount</TableHead>
                   <TableHead>Source</TableHead>
                   <TableHead>Ref no</TableHead>
-                  <TableHead className="text-right">Penalty + late fee</TableHead>
+                  <TableHead className="text-right">GST + late fee</TableHead>
                   <TableHead className="text-right" />
                 </TableRow>
               </TableHeader>

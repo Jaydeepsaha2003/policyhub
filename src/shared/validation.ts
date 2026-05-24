@@ -22,7 +22,7 @@ export const policySchema = z
     holderPhone: optionalPhone,
     companyName: z.string().trim().min(1, 'Company name is required'),
     planName: z.string().trim().min(1, 'Plan name is required'),
-    premiumAmount: z.coerce.number().positive('Must be greater than zero'),
+    premiumAmount: z.coerce.number().nonnegative('Cannot be negative'),
     yearlyTotalPremium: z.coerce.number().nonnegative('Cannot be negative'),
     paymentMode: z.enum(['monthly', 'quarterly', 'half_yearly', 'yearly']),
     sumAssured: z.coerce.number().positive('Must be greater than zero'),
@@ -30,8 +30,8 @@ export const policySchema = z
     nomineeRelation: z.string().trim().optional(),
     commencementDate: z.string().min(1, 'Required'),
     maturityDate: z.string().min(1, 'Required'),
-    policyTermMonths: z.coerce.number().int().positive(),
-    premiumPaymentTermMonths: z.coerce.number().int().positive(),
+    policyTermMonths: z.coerce.number().int().nonnegative(),
+    premiumPaymentTermMonths: z.coerce.number().int().nonnegative(),
     branchName: z.string().trim().optional(),
     agentName: z.string().trim().optional(),
     agentContact: optionalPhone,
@@ -63,14 +63,31 @@ export const policySchema = z
       path: ['maturityFrequency'],
     },
   )
-  .refine((v) => new Date(v.maturityDate) > new Date(v.commencementDate), {
-    message: 'Maturity date must be after commencement',
-    path: ['maturityDate'],
-  })
-  .refine((v) => v.premiumPaymentTermMonths <= v.policyTermMonths, {
-    message: 'Payment term cannot exceed policy term',
-    path: ['premiumPaymentTermMonths'],
-  });
+  .refine(
+    (v) =>
+      v.status === 'matured' ||
+      new Date(v.maturityDate) > new Date(v.commencementDate),
+    {
+      message: 'Maturity date must be after commencement',
+      path: ['maturityDate'],
+    },
+  )
+  .refine(
+    (v) =>
+      v.status === 'matured' ||
+      v.premiumPaymentTermMonths <= v.policyTermMonths,
+    {
+      message: 'Payment term cannot exceed policy term',
+      path: ['premiumPaymentTermMonths'],
+    },
+  )
+  .refine(
+    (v) => v.status === 'matured' || v.premiumAmount > 0,
+    {
+      message: 'Premium must be greater than zero (use status=Matured if the policy has already matured)',
+      path: ['premiumAmount'],
+    },
+  );
 
 export type PolicyFormValues = z.infer<typeof policySchema>;
 

@@ -14,6 +14,11 @@ export const IPC = {
   policiesDelete: 'policies:delete',
   policiesSyncMaturity: 'policies:syncMaturity',
   policiesExportExcel: 'policies:exportExcel',
+  policiesDownloadTemplate: 'policies:downloadTemplate',
+  policiesImportTemplate: 'policies:importTemplate',
+  policiesListDeleted: 'policies:listDeleted',
+  policiesRestore: 'policies:restore',
+  policiesPurge: 'policies:purge',
   valuationExportExcel: 'valuation:exportExcel',
 
   // Payments
@@ -64,6 +69,7 @@ export const IPC = {
   appBackupDb: 'app:backupDb',
   appExportJson: 'app:exportJson',
   appResetData: 'app:resetData',
+  appImportDb: 'app:importDb',
   cloudSync: 'cloud:sync',
   cloudTest: 'cloud:test',
   cloudTestEmail: 'cloud:testEmail',

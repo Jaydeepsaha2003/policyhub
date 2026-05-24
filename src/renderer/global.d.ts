@@ -16,6 +16,18 @@ type PolicyHubApi = {
     remove: (id: string) => Promise<void>;
     syncMaturity: (id: string) => Promise<{ created: number; removed: number }>;
     exportExcel: () => Promise<{ saved: boolean; path?: string; rowCount?: number }>;
+    downloadTemplate: () => Promise<{ saved: boolean; path?: string }>;
+    importTemplate: () => Promise<{
+      picked: boolean;
+      file?: string;
+      totalRows: number;
+      created: number;
+      skipped: number;
+      errors: { row: number; reason: string; policyNo?: string }[];
+    }>;
+    listDeleted: () => Promise<any[]>;
+    restore: (id: string) => Promise<void>;
+    purge: (id: string) => Promise<void>;
   };
   valuation: {
     exportExcel: (
@@ -95,6 +107,7 @@ type PolicyHubApi = {
     backupDb: () => Promise<{ saved: boolean; path?: string }>;
     exportJson: () => Promise<{ saved: boolean; path?: string }>;
     resetData: () => Promise<{ reset: boolean }>;
+    importDb: () => Promise<{ imported: boolean; backedUpTo?: string }>;
   };
   cloud: {
     sync: () => Promise<{
