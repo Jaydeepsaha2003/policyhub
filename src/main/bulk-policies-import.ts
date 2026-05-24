@@ -294,7 +294,7 @@ export const importPolicyTemplate = async (): Promise<PolicyImportResult> => {
       if (premiumAmount === null && status !== 'matured') missing.push('Premium amount');
       if (yearlyTotalPremium === null && status !== 'matured') missing.push('Yearly premium');
       if (!paymentMode && status !== 'matured') missing.push('Payment mode');
-      if (sumAssured === null) missing.push('Sum assured');
+      if (sumAssured === null && status !== 'matured') missing.push('Sum assured');
       if (!commencementDate && status !== 'matured') missing.push('Commencement date');
       if (!maturityDate) missing.push('Maturity date');
       if (policyTermMonths === null && status !== 'matured') missing.push('Policy term');

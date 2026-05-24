@@ -445,11 +445,11 @@ export const PolicyFormPage = ({ mode, initial, onSaved }: Props) => {
           />
         </Field>
         <Field
-          label="Sum assured (₹)"
-          required
+          label={`Sum assured (₹)${isMatured ? ' — optional' : ''}`}
+          required={!isMatured}
           error={errs.sumAssured?.message}
           hint={
-            sumAssuredTouched
+            sumAssuredTouched || isMatured
               ? undefined
               : 'Auto-filled at 10× yearly premium — edit to override'
           }

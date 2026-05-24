@@ -77,12 +77,16 @@ export const createPolicy = (input: PolicyFormInput) => {
   if (data.status !== 'matured') {
     regenerateInstallments(id);
   }
-  // Auto-create maturity payout repayments. Import lazily to avoid circular deps.
-  try {
-    const { generateMaturityRepayments } = require('./repayments') as typeof import('./repayments');
-    generateMaturityRepayments(id);
-  } catch (err) {
-    console.error('[policies] maturity repayment sync failed', err);
+  // Auto-create maturity payout repayments — but only for live policies.
+  // A matured policy has already paid out; if the user wants to record those
+  // historical receipts they can add repayments manually.
+  if (data.status !== 'matured') {
+    try {
+      const { generateMaturityRepayments } = require('./repayments') as typeof import('./repayments');
+      generateMaturityRepayments(id);
+    } catch (err) {
+      console.error('[policies] maturity repayment sync failed', err);
+    }
   }
   return id;
 };
@@ -114,7 +118,7 @@ export const updatePolicy = (id: string, input: PolicyFormInput) => {
     before.maturityFrequency !== data.maturityFrequency ||
     before.sumAssured !== data.sumAssured;
 
-  if (maturityChanged) {
+  if (maturityChanged && data.status !== 'matured') {
     try {
       const { generateMaturityRepayments } = require('./repayments') as typeof import('./repayments');
       generateMaturityRepayments(id);

@@ -25,7 +25,7 @@ export const policySchema = z
     premiumAmount: z.coerce.number().nonnegative('Cannot be negative'),
     yearlyTotalPremium: z.coerce.number().nonnegative('Cannot be negative'),
     paymentMode: z.enum(['monthly', 'quarterly', 'half_yearly', 'yearly']),
-    sumAssured: z.coerce.number().positive('Must be greater than zero'),
+    sumAssured: z.coerce.number().nonnegative('Cannot be negative'),
     nomineeName: z.string().trim().min(1, 'Nominee is required'),
     nomineeRelation: z.string().trim().optional(),
     commencementDate: z.string().min(1, 'Required'),
@@ -86,6 +86,13 @@ export const policySchema = z
     {
       message: 'Premium must be greater than zero (use status=Matured if the policy has already matured)',
       path: ['premiumAmount'],
+    },
+  )
+  .refine(
+    (v) => v.status === 'matured' || v.sumAssured > 0,
+    {
+      message: 'Sum assured must be greater than zero (not required for matured policies)',
+      path: ['sumAssured'],
     },
   );
 
