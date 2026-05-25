@@ -215,14 +215,17 @@ export const regenerateInstallments = (policyId: string) => {
 
 export const countPremiumsDueInRange = (fromIso: string, toIso: string) => {
   const db = getDb();
+  // Exclude payments whose policy is in the recycle bin.
   const row = db
     .select({ c: sql<number>`count(*)` })
     .from(premiumPayments)
+    .innerJoin(policies, eq(premiumPayments.policyId, policies.id))
     .where(
       and(
         eq(premiumPayments.status, 'pending'),
         gte(premiumPayments.dueDate, fromIso),
         lte(premiumPayments.dueDate, toIso),
+        isNull(policies.deletedAt),
       ),
     )
     .get();

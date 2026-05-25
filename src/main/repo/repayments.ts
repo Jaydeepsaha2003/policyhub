@@ -25,11 +25,16 @@ const monthsBetween = (f: RepaymentFrequency): number => {
 export const markRepaymentsOverdue = () => {
   const today = format(new Date(), 'yyyy-MM-dd');
   const sqlite = getRawSqlite();
+  // Skip repayments whose policy is in the recycle bin. Standalone
+  // repayments (policy_id IS NULL) are always considered.
   sqlite
     .prepare(
       `UPDATE repayments
          SET status = 'overdue', updated_at = CURRENT_TIMESTAMP
-       WHERE status = 'pending' AND expected_date < ?`,
+       WHERE status = 'pending'
+         AND expected_date < ?
+         AND (policy_id IS NULL
+              OR policy_id IN (SELECT id FROM policies WHERE deleted_at IS NULL))`,
     )
     .run(today);
 };
@@ -43,23 +48,48 @@ export type ListFilters = {
 
 export const listRepayments = (filters?: ListFilters) => {
   markRepaymentsOverdue();
-  const db = getDb();
-  const where = [] as any[];
-  if (filters?.status) where.push(eq(repayments.status, filters.status));
-  if (filters?.policyId) where.push(eq(repayments.policyId, filters.policyId));
-  if (filters?.from) where.push(gte(repayments.expectedDate, filters.from));
-  if (filters?.to) where.push(lte(repayments.expectedDate, filters.to));
-  const q = db.select().from(repayments);
-  return (where.length ? q.where(and(...where)) : q)
-    .orderBy(asc(repayments.expectedDate))
-    .all();
+  const sqlite = getRawSqlite();
+  const where: string[] = [
+    // Hide repayments whose policy is in the recycle bin. Standalone
+    // repayments (policy_id IS NULL) remain visible.
+    `(r.policy_id IS NULL OR EXISTS (
+        SELECT 1 FROM policies p WHERE p.id = r.policy_id AND p.deleted_at IS NULL))`,
+  ];
+  const args: any[] = [];
+  if (filters?.status) {
+    where.push('r.status = ?');
+    args.push(filters.status);
+  }
+  if (filters?.policyId) {
+    where.push('r.policy_id = ?');
+    args.push(filters.policyId);
+  }
+  if (filters?.from) {
+    where.push('r.expected_date >= ?');
+    args.push(filters.from);
+  }
+  if (filters?.to) {
+    where.push('r.expected_date <= ?');
+    args.push(filters.to);
+  }
+  return sqlite
+    .prepare(
+      `SELECT r.* FROM repayments r
+        WHERE ${where.join(' AND ')}
+        ORDER BY r.expected_date ASC`,
+    )
+    .all(...args);
 };
 
 // Joined list — includes policy_no/holder for the page table.
 export const listRepaymentsWithPolicy = (filters?: ListFilters) => {
   markRepaymentsOverdue();
   const sqlite = getRawSqlite();
-  const where: string[] = [];
+  // Hide repayments whose policy is in the recycle bin. Standalone
+  // repayments (policy_id IS NULL) remain visible.
+  const where: string[] = [
+    '(r.policy_id IS NULL OR p.deleted_at IS NULL)',
+  ];
   const args: any[] = [];
   if (filters?.status) {
     where.push('r.status = ?');

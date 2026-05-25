@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, isNull, lte, sql } from 'drizzle-orm';
 import { differenceInCalendarDays, format } from 'date-fns';
 import { getDb, getRawSqlite } from '../db';
 import { policies, premiumPayments } from '../../shared/db/schema';
@@ -21,16 +21,21 @@ export const listAllPayments = (filters?: {
   to?: string;
 }) => {
   const db = getDb();
-  const where = [] as any[];
+  // Hide payments whose policy is in the recycle bin.
+  const where = [isNull(policies.deletedAt)] as any[];
   if (filters?.status) where.push(eq(premiumPayments.status, filters.status));
   if (filters?.policyId) where.push(eq(premiumPayments.policyId, filters.policyId));
   if (filters?.from) where.push(gte(premiumPayments.dueDate, filters.from));
   if (filters?.to) where.push(lte(premiumPayments.dueDate, filters.to));
 
-  const q = db.select().from(premiumPayments);
-  return (where.length ? q.where(and(...where)) : q)
+  const rows = db
+    .select({ payment: premiumPayments })
+    .from(premiumPayments)
+    .innerJoin(policies, eq(premiumPayments.policyId, policies.id))
+    .where(and(...where))
     .orderBy(desc(premiumPayments.dueDate))
     .all();
+  return rows.map((r) => r.payment);
 };
 
 export const markPaid = (input: MarkPaidInput) => {
@@ -163,13 +168,17 @@ export const updatePayment = (input: UpdatePaymentInput) => {
 
 export const markOverdueInstallments = () => {
   const today = format(new Date(), 'yyyy-MM-dd');
-  const db = getDb();
-  db.update(premiumPayments)
-    .set({ status: 'overdue', updatedAt: new Date().toISOString() })
-    .where(
-      and(eq(premiumPayments.status, 'pending'), sql`due_date < ${today}`),
+  const sqlite = getRawSqlite();
+  // Skip payments whose policy is in the recycle bin.
+  sqlite
+    .prepare(
+      `UPDATE premium_payments
+          SET status = 'overdue', updated_at = CURRENT_TIMESTAMP
+        WHERE status = 'pending'
+          AND due_date < ?
+          AND policy_id IN (SELECT id FROM policies WHERE deleted_at IS NULL)`,
     )
-    .run();
+    .run(today);
 };
 
 export const upcomingPremiums = (limit = 10): UpcomingPremium[] => {
@@ -192,6 +201,7 @@ export const upcomingPremiums = (limit = 10): UpcomingPremium[] => {
       and(
         sql`${premiumPayments.status} IN ('pending','overdue')`,
         gte(premiumPayments.dueDate, today),
+        isNull(policies.deletedAt),
       ),
     )
     .orderBy(asc(premiumPayments.dueDate))

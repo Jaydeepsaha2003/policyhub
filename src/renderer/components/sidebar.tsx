@@ -1,6 +1,7 @@
 import { LayoutDashboard, FileText, IndianRupee, BellRing, Settings, ShieldCheck, Calculator, Banknote } from 'lucide-react';
 import { useRouter, type Route } from '@/lib/router';
 import { cn } from '@/lib/utils';
+import { HelpDialog } from './help-dialog';
 
 const nav: { key: Route['name']; label: string; path: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { key: 'dashboard', label: 'Dashboard', path: '/', icon: LayoutDashboard },
@@ -18,20 +19,32 @@ const matches = (active: Route, key: Route['name']): boolean => {
   return false;
 };
 
-export const Sidebar = () => {
+export const Sidebar = ({ collapsed }: { collapsed: boolean }) => {
   const { route, navigate } = useRouter();
   return (
-    <aside className="flex h-full w-60 flex-col border-r bg-card/40">
-      <div className="flex h-14 items-center gap-2 border-b px-4 drag-region">
-        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
+    <aside
+      className={cn(
+        'flex h-full flex-col border-r bg-card/40 transition-[width] duration-200',
+        collapsed ? 'w-14' : 'w-60',
+      )}
+    >
+      <div
+        className={cn(
+          'flex h-14 items-center gap-2 border-b drag-region',
+          collapsed ? 'justify-center px-0' : 'px-4',
+        )}
+      >
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
           <ShieldCheck className="h-4 w-4" />
         </div>
-        <div className="leading-tight">
-          <div className="text-sm font-semibold">PolicyHub</div>
-          <div className="text-[10px] text-muted-foreground">Local-first policy CRM</div>
-        </div>
+        {!collapsed && (
+          <div className="leading-tight">
+            <div className="text-sm font-semibold">PolicyHub</div>
+            <div className="text-[10px] text-muted-foreground">Local-first policy CRM</div>
+          </div>
+        )}
       </div>
-      <nav className="flex flex-col gap-1 p-3 no-drag">
+      <nav className={cn('flex flex-col gap-1 no-drag', collapsed ? 'p-2' : 'p-3')}>
         {nav.map((item) => {
           const Icon = item.icon;
           const active = matches(route, item.key);
@@ -39,22 +52,35 @@ export const Sidebar = () => {
             <button
               key={item.key}
               onClick={() => navigate(item.path)}
+              title={collapsed ? item.label : undefined}
+              aria-label={item.label}
               className={cn(
-                'flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                'flex items-center rounded-md text-sm font-medium transition-colors',
+                collapsed ? 'justify-center px-2 py-2' : 'gap-2 px-3 py-2',
                 active
                   ? 'bg-primary/10 text-primary'
                   : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
               )}
             >
-              <Icon className="h-4 w-4" />
-              <span>{item.label}</span>
+              <Icon className="h-4 w-4 shrink-0" />
+              {!collapsed && <span>{item.label}</span>}
             </button>
           );
         })}
       </nav>
-      <div className="mt-auto p-3 text-[11px] text-muted-foreground">
-        Data lives on this machine. Backups in Settings.
+      <div
+        className={cn(
+          'mt-auto flex flex-col gap-1 border-t no-drag',
+          collapsed ? 'px-2 py-2' : 'px-3 py-2',
+        )}
+      >
+        <HelpDialog collapsed={collapsed} />
       </div>
+      {!collapsed && (
+        <div className="p-3 text-[11px] text-muted-foreground">
+          Data lives on this machine. Backups in Settings.
+        </div>
+      )}
     </aside>
   );
 };
