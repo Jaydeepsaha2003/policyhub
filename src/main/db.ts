@@ -218,17 +218,48 @@ const applySchema = (sqlite: Database.Database) => {
   addColumnIfMissing(sqlite, 'policies', 'deleted_at', 'TEXT');
 
   // Auto-purge: hard-delete policies that have been in the recycle bin for
-  // more than 90 days.
+  // more than 90 days. Repayments are unlinked via ON DELETE SET NULL,
+  // which would leave behind orphan rows with a blank policy number on
+  // the Repayments tab — so we delete those repayments first inside a
+  // single transaction.
+  try {
+    const purgeStaleRepayments = sqlite.prepare(
+      `DELETE FROM repayments
+        WHERE policy_id IN (
+          SELECT id FROM policies
+           WHERE deleted_at IS NOT NULL
+             AND datetime(deleted_at, '+90 days') < datetime('now')
+        )`,
+    );
+    const purgeStalePolicies = sqlite.prepare(
+      `DELETE FROM policies
+        WHERE deleted_at IS NOT NULL
+          AND datetime(deleted_at, '+90 days') < datetime('now')`,
+    );
+    sqlite.transaction(() => {
+      purgeStaleRepayments.run();
+      purgeStalePolicies.run();
+    })();
+  } catch (err) {
+    console.error('[db] recycle-bin auto-purge failed', err);
+  }
+
+  // One-time cleanup for users upgrading from older builds: remove
+  // already-orphaned auto-generated maturity repayments left behind by
+  // earlier purges (their policy_id was set to NULL by the schema, so
+  // they show up in the Repayments tab with a blank policy number).
+  // Genuine user-created standalone repayments (different notes) are
+  // left alone.
   try {
     sqlite
       .prepare(
-        `DELETE FROM policies
-          WHERE deleted_at IS NOT NULL
-            AND datetime(deleted_at, '+90 days') < datetime('now')`,
+        `DELETE FROM repayments
+          WHERE policy_id IS NULL
+            AND notes LIKE 'Auto-generated from policy maturity%'`,
       )
       .run();
   } catch (err) {
-    console.error('[db] recycle-bin auto-purge failed', err);
+    console.error('[db] orphan-repayment cleanup failed', err);
   }
 
   // Migration: rename policy_term_years → policy_term_months and multiply by 12.

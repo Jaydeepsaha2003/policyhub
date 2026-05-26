@@ -1,6 +1,6 @@
 import { v4 as uuid } from 'uuid';
 import { and, asc, eq, gte, isNull, isNotNull, lte, sql } from 'drizzle-orm';
-import { getDb } from '../db';
+import { getDb, getRawSqlite } from '../db';
 import { policies, premiumPayments } from '../../shared/db/schema';
 import { generateInstallments } from '../../shared/installments';
 import { rupeesToPaise, type PolicyFormInput } from '../../shared/types';
@@ -142,9 +142,19 @@ export const restorePolicy = (id: string) => {
   db.update(policies).set({ deletedAt: null }).where(eq(policies.id, id)).run();
 };
 
+// Permanent delete. Wipes the policy AND every repayment linked to it,
+// so we don't leave behind orphan "blank policy no" rows in the Repayments
+// tab. (premium_payments are removed automatically by the ON DELETE
+// CASCADE on that table; repayments use ON DELETE SET NULL, so we delete
+// them explicitly here.) Standalone repayments (policy_id IS NULL) are
+// not touched.
 export const purgePolicy = (id: string) => {
-  const db = getDb();
-  db.delete(policies).where(eq(policies.id, id)).run();
+  const sqlite = getRawSqlite();
+  const tx = sqlite.transaction((policyId: string) => {
+    sqlite.prepare('DELETE FROM repayments WHERE policy_id = ?').run(policyId);
+    sqlite.prepare('DELETE FROM policies WHERE id = ?').run(policyId);
+  });
+  tx(id);
 };
 
 export const countActivePolicies = () => {
