@@ -21,7 +21,7 @@ type TemplateRow = {
   status: string;
 };
 
-const collectPending = (): TemplateRow[] => {
+const collectPending = (paymentIds?: string[]): TemplateRow[] => {
   const sqlite = getRawSqlite();
   const today = format(new Date(), 'yyyy-MM-dd');
 
@@ -32,6 +32,31 @@ const collectPending = (): TemplateRow[] => {
         WHERE status='pending' AND due_date < ?`,
     )
     .run(today);
+
+  // When the renderer passes a specific ID list, export only those rows
+  // (so the template honors the active filters on the Payments tab).
+  // Empty list → return nothing (caller filtered everything out).
+  if (paymentIds !== undefined) {
+    if (paymentIds.length === 0) return [];
+    const placeholders = paymentIds.map(() => '?').join(',');
+    return sqlite
+      .prepare(
+        `SELECT pp.id AS paymentId,
+                p.policy_no AS policyNo,
+                p.policy_holder AS policyHolder,
+                p.company_name AS companyName,
+                p.plan_name AS planName,
+                pp.installment_no AS installmentNo,
+                pp.due_date AS dueDate,
+                pp.expected_amount AS expectedAmountPaise,
+                pp.status AS status
+           FROM premium_payments pp
+           JOIN policies p ON p.id = pp.policy_id
+          WHERE pp.id IN (${placeholders})
+          ORDER BY pp.due_date ASC, p.policy_no ASC`,
+      )
+      .all(...paymentIds) as TemplateRow[];
+  }
 
   return sqlite
     .prepare(
@@ -62,12 +87,14 @@ const PAYMENT_SOURCES = [
   'Other',
 ];
 
-export const generateTemplate = async (): Promise<{
+export const generateTemplate = async (opts?: {
+  paymentIds?: string[];
+}): Promise<{
   saved: boolean;
   path?: string;
   rowCount?: number;
 }> => {
-  const rows = collectPending();
+  const rows = collectPending(opts?.paymentIds);
 
   const { canceled, filePath } = await dialog.showSaveDialog({
     title: 'Save bulk payment template',

@@ -23,8 +23,11 @@ const api = {
     remove: (id: string) => invoke(IPC.policiesDelete, id),
     syncMaturity: (id: string) =>
       invoke<{ created: number; removed: number }>(IPC.policiesSyncMaturity, id),
-    exportExcel: () =>
-      invoke<{ saved: boolean; path?: string; rowCount?: number }>(IPC.policiesExportExcel),
+    exportExcel: (opts?: { policyIds?: string[] }) =>
+      invoke<{ saved: boolean; path?: string; rowCount?: number }>(
+        IPC.policiesExportExcel,
+        opts,
+      ),
     downloadTemplate: () =>
       invoke<{ saved: boolean; path?: string }>(IPC.policiesDownloadTemplate),
     importTemplate: () =>
@@ -76,7 +79,8 @@ const api = {
     sendNow: () => invoke(IPC.remindersSendNow),
   },
   bulk: {
-    downloadTemplate: () => invoke(IPC.bulkDownloadTemplate),
+    downloadTemplate: (opts?: { paymentIds?: string[] }) =>
+      invoke(IPC.bulkDownloadTemplate, opts),
     importTemplate: () => invoke(IPC.bulkImportTemplate),
   },
   repayments: {

@@ -157,10 +157,15 @@ export const PaymentsPage = () => {
   const downloadTemplate = async () => {
     setDownloading(true);
     try {
-      const res: any = await window.policyhub.bulk.downloadTemplate();
+      // If any filter is active, export only the visible (filtered) rows.
+      // Otherwise let the main process default to "all pending/overdue".
+      const opts = anyFilterActive
+        ? { paymentIds: filtered.map((r) => r.id) }
+        : undefined;
+      const res: any = await window.policyhub.bulk.downloadTemplate(opts);
       if (res?.saved) {
         toast.success('Template saved', {
-          description: `${res.rowCount ?? 0} pending/overdue installment(s) — ${res.path}`,
+          description: `${res.rowCount ?? 0} installment(s) — ${res.path}`,
         });
       }
     } catch (err) {

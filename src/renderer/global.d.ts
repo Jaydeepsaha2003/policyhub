@@ -15,7 +15,9 @@ type PolicyHubApi = {
     update: (id: string, input: any) => Promise<any>;
     remove: (id: string) => Promise<void>;
     syncMaturity: (id: string) => Promise<{ created: number; removed: number }>;
-    exportExcel: () => Promise<{ saved: boolean; path?: string; rowCount?: number }>;
+    exportExcel: (opts?: {
+      policyIds?: string[];
+    }) => Promise<{ saved: boolean; path?: string; rowCount?: number }>;
     downloadTemplate: () => Promise<{ saved: boolean; path?: string }>;
     importTemplate: () => Promise<{
       picked: boolean;
@@ -65,7 +67,9 @@ type PolicyHubApi = {
     sendNow: () => Promise<{ attempted: number; succeeded: number; failed: number }>;
   };
   bulk: {
-    downloadTemplate: () => Promise<{ saved: boolean; path?: string; rowCount?: number }>;
+    downloadTemplate: (opts?: {
+      paymentIds?: string[];
+    }) => Promise<{ saved: boolean; path?: string; rowCount?: number }>;
     importTemplate: () => Promise<{
       picked: boolean;
       file?: string;

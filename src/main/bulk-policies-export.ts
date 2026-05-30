@@ -6,20 +6,42 @@ import { getRawSqlite } from './db';
 const PAISE_TO_RUPEES = (p: number | null | undefined) =>
   p === null || p === undefined ? null : p / 100;
 
-export const exportAllPolicies = async (): Promise<{
+export const exportAllPolicies = async (opts?: {
+  policyIds?: string[];
+}): Promise<{
   saved: boolean;
   path?: string;
   rowCount?: number;
 }> => {
   const sqlite = getRawSqlite();
 
-  const rows = sqlite
-    .prepare(
-      `SELECT *
-         FROM policies
-        ORDER BY policy_holder ASC, policy_no ASC`,
-    )
-    .all() as any[];
+  // If the renderer passed a list of policy IDs (rows visible after the
+  // active filters), export only those. An empty list means everything
+  // was filtered out.
+  let rows: any[];
+  if (opts?.policyIds !== undefined) {
+    if (opts.policyIds.length === 0) {
+      rows = [];
+    } else {
+      const placeholders = opts.policyIds.map(() => '?').join(',');
+      rows = sqlite
+        .prepare(
+          `SELECT *
+             FROM policies
+            WHERE id IN (${placeholders})
+            ORDER BY policy_holder ASC, policy_no ASC`,
+        )
+        .all(...opts.policyIds) as any[];
+    }
+  } else {
+    rows = sqlite
+      .prepare(
+        `SELECT *
+           FROM policies
+          ORDER BY policy_holder ASC, policy_no ASC`,
+      )
+      .all() as any[];
+  }
 
   const { canceled, filePath } = await dialog.showSaveDialog({
     title: 'Export all policies',

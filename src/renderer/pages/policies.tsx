@@ -223,7 +223,17 @@ export const PoliciesPage = () => {
             onClick={async () => {
               setExporting(true);
               try {
-                const r = await window.policyhub.policies.exportExcel();
+                // Honor active filters: if any are set, pass the visible
+                // policy IDs so the export contains only those rows.
+                const anyFilterActive =
+                  q.trim() !== '' ||
+                  companyFilter !== 'all' ||
+                  modeFilter !== 'all' ||
+                  statusFilter !== 'all';
+                const opts = anyFilterActive
+                  ? { policyIds: filtered.map((p) => p.id) }
+                  : undefined;
+                const r = await window.policyhub.policies.exportExcel(opts);
                 if (r?.saved) {
                   toast.success(
                     `Exported ${r.rowCount ?? 0} policies`,
@@ -242,7 +252,7 @@ export const PoliciesPage = () => {
             ) : (
               <FileSpreadsheet className="h-4 w-4" />
             )}
-            Export all as Excel
+            Export to Excel
           </Button>
           <Button onClick={() => navigate('/policies/new')}>
             <Plus className="h-4 w-4" />

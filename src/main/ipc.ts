@@ -117,7 +117,9 @@ export const registerIpc = () => {
   });
   handleMutate(IPC.policiesDelete, (id: string) => deletePolicy(id));
   handleMutate(IPC.policiesSyncMaturity, (id: string) => generateMaturityRepayments(id));
-  handle(IPC.policiesExportExcel, () => exportAllPolicies());
+  handle(IPC.policiesExportExcel, (opts?: { policyIds?: string[] }) =>
+    exportAllPolicies(opts),
+  );
   handle(IPC.policiesDownloadTemplate, () => generatePolicyTemplate());
   handleMutate(IPC.policiesImportTemplate, () => importPolicyTemplate());
   handle(IPC.policiesListDeleted, () => listDeletedPolicies());
@@ -213,7 +215,9 @@ export const registerIpc = () => {
   handle(IPC.remindersSendNow, () => sendRemindersNow());
 
   // Bulk payment template
-  handle(IPC.bulkDownloadTemplate, () => generateTemplate());
+  handle(IPC.bulkDownloadTemplate, (opts?: { paymentIds?: string[] }) =>
+    generateTemplate(opts),
+  );
   handleMutate(IPC.bulkImportTemplate, () => importTemplate());
 
   // Repayments
