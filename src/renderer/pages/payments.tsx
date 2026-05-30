@@ -38,9 +38,35 @@ type Row = {
   lateFee: number;
 };
 
+type MfRow = {
+  id: string;
+  mutualFundId: string;
+  installmentNo: number;
+  dueDate: string;
+  expectedAmount: number;
+  status: 'pending' | 'paid' | 'overdue';
+  paidDate: string | null;
+  paidAmount: number | null;
+  paymentMethod: string | null;
+  paymentSource: string | null;
+  paymentSourceName: string | null;
+  receiptNo: string | null;
+  folioNo: string;
+  accountHolder: string;
+  provider: string;
+  schemeName: string;
+  debitBankName: string | null;
+  debitAccountNo: string | null;
+};
+
+// Discriminated union we display in the unified table.
+type UnifiedRow =
+  | ({ kind: 'policy' } & Row)
+  | ({ kind: 'mutual_fund' } & MfRow);
+
 type PolicyLite = { id: string; policyNo: string; policyHolder: string; companyName: string };
 
-const statusBadge = (s: Row['status']) =>
+const statusBadge = (s: 'pending' | 'paid' | 'overdue') =>
   s === 'paid' ? (
     <Badge variant="success">Paid</Badge>
   ) : s === 'overdue' ? (
@@ -52,15 +78,22 @@ const statusBadge = (s: Row['status']) =>
 export const PaymentsPage = () => {
   const { navigate } = useRouter();
   const [rows, setRows] = useState<Row[]>([]);
+  const [mfRows, setMfRows] = useState<MfRow[]>([]);
   const [policies, setPolicies] = useState<PolicyLite[]>([]);
   const [status, setStatus] = useState<string>('all');
   const [policyId, setPolicyId] = useState<string>('all');
   const [companyFilter, setCompanyFilter] = useState<string>('all');
   const [holderFilter, setHolderFilter] = useState<string>('all');
+  const [typeFilter, setTypeFilter] = useState<string>('all'); // 'all' | 'policy' | 'mutual_fund'
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [markId, setMarkId] = useState<string | null>(null);
+  const [markKind, setMarkKind] = useState<'policy' | 'mutual_fund'>('policy');
   const [markDefault, setMarkDefault] = useState(0);
+  const [markDebit, setMarkDebit] = useState<{
+    bank: string | null;
+    accountNo: string | null;
+  }>({ bank: null, accountNo: null });
   const [editRow, setEditRow] = useState<EditablePayment | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -74,16 +107,22 @@ export const PaymentsPage = () => {
 
   const load = async () => {
     try {
-      const [p, pol]: any = await Promise.all([
+      const [p, mfp, pol]: any = await Promise.all([
         window.policyhub.payments.listAll({
           status: status === 'all' ? undefined : status,
           policyId: policyId === 'all' ? undefined : policyId,
           from: from || undefined,
           to: to || undefined,
         }),
+        window.policyhub.mfPayments.listAll({
+          status: status === 'all' ? undefined : status,
+          from: from || undefined,
+          to: to || undefined,
+        }),
         window.policyhub.policies.list(),
       ]);
       setRows(p as Row[]);
+      setMfRows(mfp as MfRow[]);
       setPolicies(
         (pol as any[]).map((r) => ({
           id: r.id,
@@ -100,48 +139,66 @@ export const PaymentsPage = () => {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, policyId, from, to]);
+  }, [status, policyId, from, to, typeFilter]);
 
   const policyMap = useMemo(() => new Map(policies.map((p) => [p.id, p])), [policies]);
 
-  // Values for the company / holder dropdowns, narrowed by what's currently
-  // selected so the user only sees meaningful options.
-  const companies = useMemo(
-    () => Array.from(new Set(policies.map((p) => p.companyName))).sort(),
-    [policies],
-  );
-  const holders = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          policies
-            .filter(
-              (p) => companyFilter === 'all' || p.companyName === companyFilter,
-            )
-            .map((p) => p.policyHolder),
-        ),
-      ).sort(),
-    [policies, companyFilter],
-  );
+  // Companies / holders for the filter dropdowns. Policies contribute company
+  // + holder; MFs contribute provider (as "company") + accountHolder.
+  const companies = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of policies) set.add(p.companyName);
+    for (const m of mfRows) set.add(m.provider);
+    return Array.from(set).sort();
+  }, [policies, mfRows]);
 
-  // Apply remaining client-side filters (company, holder) to the
-  // server-filtered set.
-  const filtered = useMemo(
-    () =>
-      rows.filter((r) => {
+  const holders = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of policies) {
+      if (companyFilter === 'all' || p.companyName === companyFilter) {
+        set.add(p.policyHolder);
+      }
+    }
+    for (const m of mfRows) {
+      if (companyFilter === 'all' || m.provider === companyFilter) {
+        set.add(m.accountHolder);
+      }
+    }
+    return Array.from(set).sort();
+  }, [policies, mfRows, companyFilter]);
+
+  // Unified list with kind discriminator. Filters apply across both
+  // sources.
+  const filtered = useMemo<UnifiedRow[]>(() => {
+    const out: UnifiedRow[] = [];
+    if (typeFilter !== 'mutual_fund') {
+      for (const r of rows) {
         const p = policyMap.get(r.policyId);
-        if (companyFilter !== 'all' && p?.companyName !== companyFilter) return false;
-        if (holderFilter !== 'all' && p?.policyHolder !== holderFilter) return false;
-        return true;
-      }),
-    [rows, policyMap, companyFilter, holderFilter],
-  );
+        if (companyFilter !== 'all' && p?.companyName !== companyFilter) continue;
+        if (holderFilter !== 'all' && p?.policyHolder !== holderFilter) continue;
+        out.push({ kind: 'policy', ...r });
+      }
+    }
+    if (typeFilter !== 'policy') {
+      for (const m of mfRows) {
+        if (companyFilter !== 'all' && m.provider !== companyFilter) continue;
+        if (holderFilter !== 'all' && m.accountHolder !== holderFilter) continue;
+        // A specific policyId filter excludes all MF rows.
+        if (policyId !== 'all') continue;
+        out.push({ kind: 'mutual_fund', ...m });
+      }
+    }
+    // Sort by due date desc (matches the policy-only behaviour).
+    out.sort((a, b) => b.dueDate.localeCompare(a.dueDate));
+    return out;
+  }, [rows, mfRows, policyMap, companyFilter, holderFilter, typeFilter, policyId]);
 
   const anyFilterActive =
     status !== 'all' ||
     policyId !== 'all' ||
     companyFilter !== 'all' ||
     holderFilter !== 'all' ||
+    typeFilter !== 'all' ||
     Boolean(from) ||
     Boolean(to);
 
@@ -150,6 +207,7 @@ export const PaymentsPage = () => {
     setPolicyId('all');
     setCompanyFilter('all');
     setHolderFilter('all');
+    setTypeFilter('all');
     setFrom('');
     setTo('');
   };
@@ -157,10 +215,15 @@ export const PaymentsPage = () => {
   const downloadTemplate = async () => {
     setDownloading(true);
     try {
-      // If any filter is active, export only the visible (filtered) rows.
-      // Otherwise let the main process default to "all pending/overdue".
+      // The bulk template is policy-only. If a filter is active, scope to
+      // the visible *policy* rows; ignore MF rows (they're not part of the
+      // bulk-update flow).
       const opts = anyFilterActive
-        ? { paymentIds: filtered.map((r) => r.id) }
+        ? {
+            paymentIds: filtered
+              .filter((r) => r.kind === 'policy')
+              .map((r) => r.id),
+          }
         : undefined;
       const res: any = await window.policyhub.bulk.downloadTemplate(opts);
       if (res?.saved) {
@@ -195,43 +258,38 @@ export const PaymentsPage = () => {
     }
   };
 
-  const exportCsv = () => {
-    const header = [
-      'Policy no',
-      'Holder',
-      'Installment',
-      'Due date',
-      'Expected amount',
-      'Status',
-      'Paid date',
-      'Paid amount',
-      'Method',
-      'Receipt',
-    ];
-    const lines = [header.join(',')];
-    for (const r of filtered) {
-      const p = policyMap.get(r.policyId);
-      const cells = [
-        p?.policyNo ?? '',
-        p?.policyHolder ?? '',
-        r.installmentNo,
-        r.dueDate,
-        (r.expectedAmount / 100).toFixed(2),
-        r.status,
-        r.paidDate ?? '',
-        r.paidAmount != null ? (r.paidAmount / 100).toFixed(2) : '',
-        r.paymentMethod ?? '',
-        r.receiptNo ?? '',
-      ];
-      lines.push(cells.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','));
+  const [exportingXlsx, setExportingXlsx] = useState(false);
+
+  const exportXlsx = async () => {
+    setExportingXlsx(true);
+    try {
+      // Pass the visible rows split by kind so the workbook honors
+      // every active filter. When no filter is active, pass nothing
+      // and let the main process export every live row.
+      const opts = anyFilterActive
+        ? {
+            paymentIds: filtered
+              .filter((r) => r.kind === 'policy')
+              .map((r) => r.id),
+            mfPaymentIds: filtered
+              .filter((r) => r.kind === 'mutual_fund')
+              .map((r) => r.id),
+          }
+        : undefined;
+      const res = await window.policyhub.paymentsExportWorkbook(opts);
+      if (res?.saved) {
+        const policyCount = res.sheets?.['Policy Payments'] ?? 0;
+        const mfCount = res.sheets?.['MF Payments'] ?? 0;
+        toast.success(
+          `Exported ${policyCount} policy + ${mfCount} MF installment(s)`,
+          { description: res.path },
+        );
+      }
+    } catch (err) {
+      toast.error('Export failed', { description: (err as Error).message });
+    } finally {
+      setExportingXlsx(false);
     }
-    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `payments-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
   };
 
   return (
@@ -247,6 +305,17 @@ export const PaymentsPage = () => {
               <SelectItem value="pending">Pending</SelectItem>
               <SelectItem value="overdue">Overdue</SelectItem>
               <SelectItem value="paid">Paid</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger className="w-32">
+              <SelectValue placeholder="Type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Policy + MF</SelectItem>
+              <SelectItem value="policy">Policy only</SelectItem>
+              <SelectItem value="mutual_fund">MF only</SelectItem>
             </SelectContent>
           </Select>
 
@@ -316,9 +385,18 @@ export const PaymentsPage = () => {
               {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
               Upload filled template
             </Button>
-            <Button variant="outline" size="sm" onClick={exportCsv}>
-              <Download className="h-4 w-4" />
-              Export CSV
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={exportXlsx}
+              disabled={exportingXlsx}
+            >
+              {exportingXlsx ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              Export to Excel
             </Button>
           </div>
         </CardContent>
@@ -332,7 +410,8 @@ export const PaymentsPage = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Policy</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Policy / Folio</TableHead>
                   <TableHead>Holder</TableHead>
                   <TableHead>#</TableHead>
                   <TableHead>Due</TableHead>
@@ -348,15 +427,127 @@ export const PaymentsPage = () => {
               </TableHeader>
               <TableBody>
                 {filtered.map((r) => {
-                  const p = policyMap.get(r.policyId);
+                  if (r.kind === 'policy') {
+                    const p = policyMap.get(r.policyId);
+                    return (
+                      <TableRow
+                        key={`p-${r.id}`}
+                        className="cursor-pointer"
+                        onClick={() => navigate(`/policies/${r.policyId}`)}
+                      >
+                        <TableCell>
+                          <Badge variant="secondary">Policy</Badge>
+                        </TableCell>
+                        <TableCell className="font-medium">{p?.policyNo ?? '—'}</TableCell>
+                        <TableCell>{p?.policyHolder ?? '—'}</TableCell>
+                        <TableCell>{r.installmentNo}</TableCell>
+                        <TableCell>{formatDate(r.dueDate)}</TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {formatCurrencyPaise(r.expectedAmount)}
+                        </TableCell>
+                        <TableCell>{statusBadge(r.status)}</TableCell>
+                        <TableCell>
+                          {r.paidDate ? (
+                            formatDate(r.paidDate)
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {r.paidAmount !== null ? (
+                            formatCurrencyPaise(r.paidAmount)
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {r.paymentSource || r.paymentSourceName ? (
+                            <div className="text-xs">
+                              <div>{r.paymentSource ?? '—'}</div>
+                              {r.paymentSourceName && (
+                                <div className="text-muted-foreground">
+                                  {r.paymentSourceName}
+                                </div>
+                              )}
+                            </div>
+                          ) : r.paymentMethod ? (
+                            <span className="text-xs">{r.paymentMethod}</span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {r.receiptNo || <span className="text-muted-foreground">—</span>}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {r.penaltyAmount + r.lateFee > 0 ? (
+                            formatCurrencyPaise(r.penaltyAmount + r.lateFee)
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            {r.status !== 'paid' && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMarkKind('policy');
+                                  setMarkDefault(r.expectedAmount / 100);
+                                  setMarkId(r.id);
+                                }}
+                              >
+                                Mark paid
+                              </Button>
+                            )}
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              title="Edit payment"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditRow({
+                                  id: r.id,
+                                  installmentNo: r.installmentNo,
+                                  dueDate: r.dueDate,
+                                  expectedAmount: r.expectedAmount,
+                                  status: r.status,
+                                  paidDate: r.paidDate,
+                                  paidAmount: r.paidAmount,
+                                  paymentMethod: r.paymentMethod,
+                                  paymentSource: r.paymentSource,
+                                  paymentSourceName: r.paymentSourceName,
+                                  receiptNo: r.receiptNo,
+                                  penaltyAmount: r.penaltyAmount,
+                                  lateFee: r.lateFee,
+                                  notes: null,
+                                });
+                              }}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  }
+                  // Mutual fund SIP row.
                   return (
                     <TableRow
-                      key={r.id}
+                      key={`m-${r.id}`}
                       className="cursor-pointer"
-                      onClick={() => navigate(`/policies/${r.policyId}`)}
+                      onClick={() => navigate(`/mutual-funds/${r.mutualFundId}`)}
                     >
-                      <TableCell className="font-medium">{p?.policyNo ?? '—'}</TableCell>
-                      <TableCell>{p?.policyHolder ?? '—'}</TableCell>
+                      <TableCell>
+                        <Badge>Mutual Fund</Badge>
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        <div>{r.folioNo}</div>
+                        <div className="text-xs text-muted-foreground">{r.schemeName}</div>
+                      </TableCell>
+                      <TableCell>{r.accountHolder}</TableCell>
                       <TableCell>{r.installmentNo}</TableCell>
                       <TableCell>{formatDate(r.dueDate)}</TableCell>
                       <TableCell className="text-right tabular-nums">
@@ -377,74 +568,34 @@ export const PaymentsPage = () => {
                           <span className="text-muted-foreground">—</span>
                         )}
                       </TableCell>
-                      <TableCell>
-                        {r.paymentSource || r.paymentSourceName ? (
-                          <div className="text-xs">
-                            <div>{r.paymentSource ?? '—'}</div>
-                            {r.paymentSourceName && (
-                              <div className="text-muted-foreground">
-                                {r.paymentSourceName}
-                              </div>
-                            )}
-                          </div>
-                        ) : r.paymentMethod ? (
-                          <span className="text-xs">{r.paymentMethod}</span>
-                        ) : (
+                      <TableCell className="text-xs">
+                        {r.paymentMethod || (
                           <span className="text-muted-foreground">—</span>
                         )}
                       </TableCell>
                       <TableCell className="text-xs">
                         {r.receiptNo || <span className="text-muted-foreground">—</span>}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {r.penaltyAmount + r.lateFee > 0 ? (
-                          formatCurrencyPaise(r.penaltyAmount + r.lateFee)
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
+                      <TableCell className="text-right text-muted-foreground">—</TableCell>
                       <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          {r.status !== 'paid' && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setMarkDefault(r.expectedAmount / 100);
-                                setMarkId(r.id);
-                              }}
-                            >
-                              Mark paid
-                            </Button>
-                          )}
+                        {r.status !== 'paid' && (
                           <Button
-                            size="icon"
-                            variant="ghost"
-                            title="Edit payment"
+                            size="sm"
+                            variant="outline"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setEditRow({
-                                id: r.id,
-                                installmentNo: r.installmentNo,
-                                dueDate: r.dueDate,
-                                expectedAmount: r.expectedAmount,
-                                status: r.status,
-                                paidDate: r.paidDate,
-                                paidAmount: r.paidAmount,
-                                paymentMethod: r.paymentMethod,
-                                paymentSource: r.paymentSource,
-                                paymentSourceName: r.paymentSourceName,
-                                receiptNo: r.receiptNo,
-                                penaltyAmount: r.penaltyAmount,
-                                lateFee: r.lateFee,
-                                notes: null,
+                              setMarkKind('mutual_fund');
+                              setMarkDefault(r.expectedAmount / 100);
+                              setMarkDebit({
+                                bank: r.debitBankName,
+                                accountNo: r.debitAccountNo,
                               });
+                              setMarkId(r.id);
                             }}
                           >
-                            <Pencil className="h-4 w-4" />
+                            Mark paid
                           </Button>
-                        </div>
+                        )}
                       </TableCell>
                     </TableRow>
                   );
@@ -458,6 +609,9 @@ export const PaymentsPage = () => {
       <MarkPaidDialog
         paymentId={markId}
         defaultAmount={markDefault}
+        kind={markKind}
+        defaultDebitBank={markDebit.bank}
+        defaultDebitAccountNo={markDebit.accountNo}
         onClose={() => setMarkId(null)}
         onSaved={() => load()}
       />

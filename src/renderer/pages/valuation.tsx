@@ -83,6 +83,30 @@ type Repayment = {
   receivedDate: string | null;
 };
 
+type MutualFund = {
+  id: string;
+  folioNo: string;
+  accountHolder: string;
+  provider: string;
+  schemeName: string;
+  type: 'lumpsum' | 'monthly';
+  amount: number;            // paise
+  startDate: string;
+  installmentCount: number;
+};
+
+// MF installment rows share the same shape as policy payments — same
+// computeValuation function works on both.
+type MfPaymentRow = {
+  id: string;
+  mutualFundId: string;
+  status: 'pending' | 'paid' | 'overdue';
+  paidDate: string | null;
+  paidAmount: number | null;
+  expectedAmount: number;
+  dueDate: string;
+};
+
 type CompoundingFrequency = 'annual' | 'half_yearly' | 'quarterly' | 'monthly';
 
 const compoundingsPerYear = (f: CompoundingFrequency): number => {
@@ -194,14 +218,16 @@ const summarizeReceived = (repayments: Repayment[]): ReceivedStatus => {
 
 export const ValuationPage = () => {
   const [policies, setPolicies] = useState<Policy[]>([]);
+  const [funds, setFunds] = useState<MutualFund[]>([]);
+  // Same Set works for both — IDs are uuids so they don't collide.
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [paymentsByPolicy, setPaymentsByPolicy] = useState<Record<string, Payment[]>>({});
   const [repaymentsByPolicy, setRepaymentsByPolicy] = useState<Record<string, Repayment[]>>({});
+  const [paymentsByFund, setPaymentsByFund] = useState<Record<string, MfPaymentRow[]>>({});
   const [globalRoi, setGlobalRoi] = useState('8');
   const [globalFreq, setGlobalFreq] = useState<CompoundingFrequency>('annual');
   const [globalValDate, setGlobalValDate] = useState(isoToday());
-  // Per-policy overrides. Each entry has roi/freq/valDate. If a policy id is
-  // missing here, the global values apply when it's selected.
+  // Per-row overrides — keyed by policy OR fund id.
   const [perRow, setPerRow] = useState<Record<string, Params>>({});
   const [loading, setLoading] = useState(true);
   const [calculating, setCalculating] = useState(false);
@@ -211,10 +237,14 @@ export const ValuationPage = () => {
   useEffect(() => {
     (async () => {
       try {
-        const list = (await window.policyhub.policies.list()) as Policy[];
-        setPolicies(list);
+        const [list, mfList] = await Promise.all([
+          window.policyhub.policies.list(),
+          window.policyhub.mutualFunds.list(),
+        ]);
+        setPolicies(list as Policy[]);
+        setFunds(mfList as MutualFund[]);
       } catch (err) {
-        toast.error('Failed to load policies', { description: (err as Error).message });
+        toast.error('Failed to load data', { description: (err as Error).message });
       } finally {
         setLoading(false);
       }
@@ -246,8 +276,30 @@ export const ValuationPage = () => {
     });
   };
 
-  const selectAll = () => setSelected(new Set(policies.map((p) => p.id)));
+  const selectAll = () =>
+    setSelected(
+      new Set([...policies.map((p) => p.id), ...funds.map((f) => f.id)]),
+    );
+  const selectAllPolicies = () =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const p of policies) next.add(p.id);
+      return next;
+    });
+  const selectAllFunds = () =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const f of funds) next.add(f.id);
+      return next;
+    });
   const selectNone = () => setSelected(new Set());
+
+  // Build a quick lookup so runCalc / export know which type each id is.
+  const policyIdSet = useMemo(
+    () => new Set(policies.map((p) => p.id)),
+    [policies],
+  );
+  const fundIdSet = useMemo(() => new Set(funds.map((f) => f.id)), [funds]);
 
   const paramsFor = (id: string): Params =>
     perRow[id] ?? { roi: globalRoi, freq: globalFreq, valDate: globalValDate };
@@ -285,11 +337,11 @@ export const ValuationPage = () => {
       const p = paramsFor(id);
       const r = Number(p.roi);
       if (!Number.isFinite(r) || r < 0 || r > 100) {
-        toast.error(`ROI must be between 0 and 100 for the selected policy`);
+        toast.error('ROI must be between 0 and 100 for every selected row');
         return;
       }
       if (!p.valDate) {
-        toast.error(`Valuation date is missing for the selected policy`);
+        toast.error('Valuation date is missing for a selected row');
         return;
       }
       const policy = policies.find((x) => x.id === id);
@@ -303,28 +355,51 @@ export const ValuationPage = () => {
         );
         return;
       }
+      const fund = funds.find((x) => x.id === id);
+      if (fund && fund.startDate && p.valDate < fund.startDate) {
+        toast.error(
+          `Valuation date can't be before start date for ${fund.folioNo}`,
+        );
+        return;
+      }
     }
     setCalculating(true);
     try {
       const next: Record<string, Calc> = {};
       const pCache = { ...paymentsByPolicy };
       const rCache = { ...repaymentsByPolicy };
-      for (const policyId of selected) {
-        if (!pCache[policyId]) {
-          pCache[policyId] = (await window.policyhub.payments.listByPolicy(policyId)) as Payment[];
+      const fCache = { ...paymentsByFund };
+      for (const id of selected) {
+        if (policyIdSet.has(id)) {
+          if (!pCache[id]) {
+            pCache[id] = (await window.policyhub.payments.listByPolicy(id)) as Payment[];
+          }
+          if (!rCache[id]) {
+            rCache[id] = (await window.policyhub.repayments.list({ policyId: id })) as Repayment[];
+          }
+          const policy = policies.find((x) => x.id === id);
+          next[id] = computeValuation(
+            pCache[id],
+            paramsFor(id),
+            maxInstallmentsForPolicy(policy),
+          );
+        } else if (fundIdSet.has(id)) {
+          if (!fCache[id]) {
+            fCache[id] = (await window.policyhub.mfPayments.listByFund(id)) as MfPaymentRow[];
+          }
+          const fund = funds.find((x) => x.id === id);
+          const cap = fund ? Math.max(1, fund.installmentCount) : Number.POSITIVE_INFINITY;
+          // MfPaymentRow has the same { dueDate, expectedAmount } shape — feed it in.
+          next[id] = computeValuation(
+            fCache[id] as unknown as Payment[],
+            paramsFor(id),
+            cap,
+          );
         }
-        if (!rCache[policyId]) {
-          rCache[policyId] = (await window.policyhub.repayments.list({ policyId })) as Repayment[];
-        }
-        const policy = policies.find((x) => x.id === policyId);
-        next[policyId] = computeValuation(
-          pCache[policyId],
-          paramsFor(policyId),
-          maxInstallmentsForPolicy(policy),
-        );
       }
       setPaymentsByPolicy(pCache);
       setRepaymentsByPolicy(rCache);
+      setPaymentsByFund(fCache);
       setResults(next);
     } catch (err) {
       toast.error('Calculation failed', { description: (err as Error).message });
@@ -366,7 +441,30 @@ export const ValuationPage = () => {
         })
         .filter((x): x is NonNullable<typeof x> => x !== null);
 
-      const out = await window.policyhub.valuation.exportExcel(rows);
+      const mfRows = resultIds
+        .map((id) => {
+          const fund = funds.find((x) => x.id === id);
+          const r = results[id];
+          if (!fund || !r) return null;
+          return {
+            folioNo: fund.folioNo,
+            accountHolder: fund.accountHolder,
+            provider: fund.provider,
+            schemeName: fund.schemeName,
+            fundType: fund.type,
+            installmentCount: fund.installmentCount,
+            startDate: fund.startDate,
+            roiPct: Number(r.paramsUsed.roi),
+            compoundingFrequency: r.paramsUsed.freq,
+            valuationDate: r.paramsUsed.valDate,
+            totalContributedPaise: r.totalContributed,
+            contributionsCount: r.contributionsCount,
+            estimatedValuationPaise: r.estimatedValuation,
+          };
+        })
+        .filter((x): x is NonNullable<typeof x> => x !== null);
+
+      const out = await window.policyhub.valuation.exportExcel(rows, mfRows);
       if (out.saved) {
         toast.success(
           `Exported ${out.rowCount} ${out.rowCount === 1 ? 'policy' : 'policies'}`,
@@ -466,13 +564,17 @@ export const ValuationPage = () => {
           <div>
             <CardTitle>Policies</CardTitle>
             <CardDescription>
-              {selected.size} of {policies.length} selected — each row has its own
-              ROI / frequency / valuation date.
+              {[...selected].filter((id) => policyIdSet.has(id)).length} of{' '}
+              {policies.length} policies selected — each row has its own ROI /
+              frequency / valuation date.
             </CardDescription>
           </div>
           <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={selectAllPolicies}>
+              Select all policies
+            </Button>
             <Button variant="outline" size="sm" onClick={selectAll}>
-              Select all
+              Select all (incl. MFs)
             </Button>
             <Button variant="outline" size="sm" onClick={selectNone}>
               Clear
@@ -596,6 +698,119 @@ export const ValuationPage = () => {
                             );
                           return <Badge variant="secondary">Not received</Badge>;
                         })()}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold tabular-nums">
+                        {r ? formatCurrencyPaise(r.estimatedValuation) : '—'}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-start justify-between">
+          <div>
+            <CardTitle>Mutual funds</CardTitle>
+            <CardDescription>
+              Lumpsum and Monthly SIPs compound the same way as a policy
+              premium — same ROI / frequency / valuation-date controls.
+            </CardDescription>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={selectAllFunds}>
+              Select all funds
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {loading ? (
+            <div className="py-16 text-center text-sm text-muted-foreground">
+              Loading…
+            </div>
+          ) : funds.length === 0 ? (
+            <TableEmpty>No mutual funds in the database yet.</TableEmpty>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10" />
+                  <TableHead>Folio / holder</TableHead>
+                  <TableHead className="w-[110px]">ROI (%)</TableHead>
+                  <TableHead className="w-[140px]">Frequency</TableHead>
+                  <TableHead className="w-[150px]">Valuation date</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead className="text-right">Total contributed</TableHead>
+                  <TableHead className="text-right">Estimated valuation</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {funds.map((f) => {
+                  const isSelected = selected.has(f.id);
+                  const r = results[f.id];
+                  const params = paramsFor(f.id);
+                  return (
+                    <TableRow key={f.id} className={isSelected ? 'bg-accent/30' : ''}>
+                      <TableCell>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggle(f.id)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <div className="font-medium">{f.folioNo}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {f.accountHolder} · {f.provider} · {f.schemeName}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          disabled={!isSelected}
+                          value={params.roi}
+                          onChange={(e) => updateRow(f.id, { roi: e.target.value })}
+                          className="h-8"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          value={params.freq}
+                          disabled={!isSelected}
+                          onValueChange={(v) =>
+                            updateRow(f.id, { freq: v as CompoundingFrequency })
+                          }
+                        >
+                          <SelectTrigger className="h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="annual">Annual</SelectItem>
+                            <SelectItem value="half_yearly">Half-yearly</SelectItem>
+                            <SelectItem value="quarterly">Quarterly</SelectItem>
+                            <SelectItem value="monthly">Monthly</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        <DateInputDMY
+                          disabled={!isSelected}
+                          value={params.valDate}
+                          onChange={(iso) => updateRow(f.id, { valDate: iso })}
+                          className="h-8"
+                        />
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {f.type === 'monthly'
+                          ? `SIP × ${f.installmentCount}`
+                          : 'Lumpsum'}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {r ? formatCurrencyPaise(r.totalContributed) : '—'}
                       </TableCell>
                       <TableCell className="text-right font-semibold tabular-nums">
                         {r ? formatCurrencyPaise(r.estimatedValuation) : '—'}

@@ -1,6 +1,76 @@
-import type { Policy, PremiumPayment, ReminderLog, Settings } from './db/schema';
+import type {
+  CalendarEvent,
+  MutualFund,
+  MutualFundPayment,
+  Policy,
+  PremiumPayment,
+  ReminderLog,
+  Settings,
+} from './db/schema';
 
-export type { Policy, PremiumPayment, ReminderLog, Settings };
+export type {
+  CalendarEvent,
+  MutualFund,
+  MutualFundPayment,
+  Policy,
+  PremiumPayment,
+  ReminderLog,
+  Settings,
+};
+
+export type CalendarEventCategory =
+  | 'credit_card'
+  | 'health_insurance'
+  | 'motor_insurance'
+  | 'property_insurance'
+  | 'property_tax'
+  | 'rr_badge'
+  | 'audit'
+  | 'vehicle_puc'
+  | 'vehicle_fitness'
+  | 'license_renewal'
+  | 'other';
+
+export type CalendarEventFrequency =
+  | 'one_time'
+  | 'monthly'
+  | 'quarterly'
+  | 'half_yearly'
+  | 'yearly';
+
+export type CalendarEventFormInput = {
+  title: string;
+  category: CalendarEventCategory;
+  customCategory?: string;
+  eventDate: string;          // ISO yyyy-MM-dd
+  isRecurring: boolean;
+  frequency: CalendarEventFrequency;
+  occurrenceTotal: number;    // 1 for one-time
+  reminderOffsetsDays: number[];
+  amount?: number;            // rupees from UI; converted to paise
+  notes?: string;
+};
+
+export type MutualFundFormInput = {
+  folioNo: string;
+  accountHolder: string;
+  agentName?: string;
+  agentContact?: string;
+  provider: string;
+  schemeName: string;
+  type: 'lumpsum' | 'monthly';
+  amount: number; // rupees from UI; converted to paise
+  startDate: string;
+  installmentCount: number; // 1 for lumpsum, N for monthly
+  status?: 'active' | 'redeemed' | 'closed';
+  // Default debit bank account for this fund. All optional.
+  debitBankName?: string;
+  debitAccountNo?: string;
+  debitIfsc?: string;
+  debitAccountHolder?: string;
+  debitBranchName?: string;
+  notes?: string;
+};
 
 export type PolicyWithNextDue = Policy & {
   nextDueDate: string | null;

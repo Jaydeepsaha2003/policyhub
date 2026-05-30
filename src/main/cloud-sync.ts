@@ -145,7 +145,24 @@ const buildPayload = () => {
     )
     .all();
 
-  return { policies, installments, repayments };
+  // Calendar / compliance events. Pushed in a separate field so an
+  // Apps Script that doesn't yet handle them safely ignores it.
+  const calendarEvents = sqlite
+    .prepare(
+      `SELECT id, title, category, custom_category AS customCategory,
+              event_date AS eventDate, status, is_recurring AS isRecurring,
+              frequency, occurrence_no AS occurrenceNo,
+              occurrence_total AS occurrenceTotal,
+              reminder_offsets_days AS reminderOffsetsDays,
+              amount, notes
+         FROM calendar_events
+        WHERE deleted_at IS NULL
+          AND status = 'pending'
+        ORDER BY event_date ASC`,
+    )
+    .all();
+
+  return { policies, installments, repayments, calendarEvents };
 };
 
 // ---- Public API ----
@@ -168,10 +185,11 @@ const send = async (
 
   const payload: Record<string, any> = { kind, secret, source: 'PolicyHub' };
   if (kind === 'sync') {
-    const { policies, installments, repayments } = buildPayload();
+    const { policies, installments, repayments, calendarEvents } = buildPayload();
     payload.policies = policies;
     payload.installments = installments;
     payload.repayments = repayments;
+    payload.calendarEvents = calendarEvents;
   }
 
   try {

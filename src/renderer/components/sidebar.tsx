@@ -1,4 +1,4 @@
-import { LayoutDashboard, FileText, IndianRupee, BellRing, Settings, ShieldCheck, Calculator, Banknote } from 'lucide-react';
+import { LayoutDashboard, FileText, IndianRupee, BellRing, Settings, ShieldCheck, Calculator, Banknote, LineChart, CalendarDays } from 'lucide-react';
 import { useRouter, type Route } from '@/lib/router';
 import { cn } from '@/lib/utils';
 import { HelpDialog } from './help-dialog';
@@ -6,8 +6,10 @@ import { HelpDialog } from './help-dialog';
 const nav: { key: Route['name']; label: string; path: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { key: 'dashboard', label: 'Dashboard', path: '/', icon: LayoutDashboard },
   { key: 'policies', label: 'Policies', path: '/policies', icon: FileText },
+  { key: 'mutual-funds', label: 'Mutual funds', path: '/mutual-funds', icon: LineChart },
   { key: 'payments', label: 'Payments', path: '/payments', icon: IndianRupee },
   { key: 'repayments', label: 'Repayments', path: '/repayments', icon: Banknote },
+  { key: 'calendar', label: 'Calendar', path: '/calendar', icon: CalendarDays },
   { key: 'reminders', label: 'Reminders', path: '/reminders', icon: BellRing },
   { key: 'valuation', label: 'Valuation', path: '/valuation', icon: Calculator },
   { key: 'settings', label: 'Settings', path: '/settings', icon: Settings },
@@ -16,6 +18,16 @@ const nav: { key: Route['name']; label: string; path: string; icon: React.Compon
 const matches = (active: Route, key: Route['name']): boolean => {
   if (active.name === key) return true;
   if (key === 'policies' && (active.name === 'policy-new' || active.name === 'policy-detail')) return true;
+  if (
+    key === 'mutual-funds' &&
+    (active.name === 'mutual-fund-new' || active.name === 'mutual-fund-detail')
+  )
+    return true;
+  if (
+    key === 'calendar' &&
+    (active.name === 'calendar-new' || active.name === 'calendar-detail')
+  )
+    return true;
   return false;
 };
 

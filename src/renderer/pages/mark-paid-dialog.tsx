@@ -19,14 +19,36 @@ import { toast } from 'sonner';
 type Props = {
   paymentId: string | null;
   defaultAmount: number;
+  // 'policy' (default) routes to payments.markPaid (with GST + late fee
+  // fields). 'mutual_fund' routes to mfPayments.markPaid and hides the
+  // GST/late-fee fields since SIPs don't have them.
+  kind?: 'policy' | 'mutual_fund';
+  // For MF rows: the parent fund's default debit account. The dialog
+  // pre-fills source / source name from these but the user can override
+  // for this specific installment if it came out of a different account.
+  defaultDebitBank?: string | null;
+  defaultDebitAccountNo?: string | null;
   onClose: () => void;
   onSaved: () => void;
 };
 
-export const MarkPaidDialog = ({ paymentId, defaultAmount, onClose, onSaved }: Props) => {
+const last4 = (s: string | null | undefined) =>
+  s ? s.replace(/\s+/g, '').slice(-4) : '';
+
+export const MarkPaidDialog = ({
+  paymentId,
+  defaultAmount,
+  kind = 'policy',
+  defaultDebitBank,
+  defaultDebitAccountNo,
+  onClose,
+  onSaved,
+}: Props) => {
   const [paidDate, setPaidDate] = useState(isoToday());
   const [paidAmount, setPaidAmount] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<string>('UPI');
+  const [paymentSource, setPaymentSource] = useState<string>('Bank');
+  const [sourceName, setSourceName] = useState<string>('');
   const [penalty, setPenalty] = useState<string>('0');
   const [lateFee, setLateFee] = useState<string>('0');
   const [receipt, setReceipt] = useState('');
@@ -38,12 +60,21 @@ export const MarkPaidDialog = ({ paymentId, defaultAmount, onClose, onSaved }: P
       setPaidDate(isoToday());
       setPaidAmount(String(defaultAmount || ''));
       setPaymentMethod('UPI');
+      setPaymentSource('Bank');
+      // Pre-fill source name from the fund's default debit account
+      // (when this is an MF installment). The user can edit before saving.
+      if (kind === 'mutual_fund' && defaultDebitBank) {
+        const tail = last4(defaultDebitAccountNo);
+        setSourceName(tail ? `${defaultDebitBank} · …${tail}` : defaultDebitBank);
+      } else {
+        setSourceName('');
+      }
       setPenalty('0');
       setLateFee('0');
       setReceipt('');
       setNotes('');
     }
-  }, [paymentId, defaultAmount]);
+  }, [paymentId, defaultAmount, kind, defaultDebitBank, defaultDebitAccountNo]);
 
   const submit = async () => {
     if (!paymentId) return;
@@ -72,16 +103,29 @@ export const MarkPaidDialog = ({ paymentId, defaultAmount, onClose, onSaved }: P
     }
     setSaving(true);
     try {
-      await window.policyhub.payments.markPaid({
-        paymentId,
-        paidDate,
-        paidAmount: amt,
-        paymentMethod,
-        penaltyAmount: Math.max(0, pen || 0),
-        lateFee: Math.max(0, late || 0),
-        receiptNo: receipt || undefined,
-        notes: notes || undefined,
-      });
+      if (kind === 'mutual_fund') {
+        await window.policyhub.mfPayments.markPaid({
+          paymentId,
+          paidDate,
+          paidAmount: amt,
+          paymentMethod,
+          paymentSource,
+          paymentSourceName: sourceName || undefined,
+          receiptNo: receipt || undefined,
+          notes: notes || undefined,
+        });
+      } else {
+        await window.policyhub.payments.markPaid({
+          paymentId,
+          paidDate,
+          paidAmount: amt,
+          paymentMethod,
+          penaltyAmount: Math.max(0, pen || 0),
+          lateFee: Math.max(0, late || 0),
+          receiptNo: receipt || undefined,
+          notes: notes || undefined,
+        });
+      }
       toast.success('Payment recorded');
       onSaved();
       onClose();
@@ -143,24 +187,60 @@ export const MarkPaidDialog = ({ paymentId, defaultAmount, onClose, onSaved }: P
             <Label>Receipt no</Label>
             <Input value={receipt} onChange={(e) => setReceipt(e.target.value)} />
           </div>
-          <div className="space-y-1.5">
-            <Label>GST (₹)</Label>
-            <Input
-              type="number"
-              step="0.01"
-              value={penalty}
-              onChange={(e) => setPenalty(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Late fee (₹)</Label>
-            <Input
-              type="number"
-              step="0.01"
-              value={lateFee}
-              onChange={(e) => setLateFee(e.target.value)}
-            />
-          </div>
+          {kind === 'mutual_fund' && (
+            <>
+              <div className="space-y-1.5">
+                <Label>Source</Label>
+                <Select value={paymentSource} onValueChange={setPaymentSource}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Bank">Bank</SelectItem>
+                    <SelectItem value="UPI">UPI</SelectItem>
+                    <SelectItem value="Auto-debit">Auto-debit</SelectItem>
+                    <SelectItem value="Cheque">Cheque</SelectItem>
+                    <SelectItem value="Card">Card</SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Name of source</Label>
+                <Input
+                  value={sourceName}
+                  onChange={(e) => setSourceName(e.target.value)}
+                  placeholder="Bank name / account"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Pre-filled from the fund's debit account. Change it if this
+                  month was paid from a different one.
+                </p>
+              </div>
+            </>
+          )}
+          {kind === 'policy' && (
+            <>
+              <div className="space-y-1.5">
+                <Label>GST (₹)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={penalty}
+                  onChange={(e) => setPenalty(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Late fee (₹)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={lateFee}
+                  onChange={(e) => setLateFee(e.target.value)}
+                />
+              </div>
+            </>
+          )}
           <div className="space-y-1.5 sm:col-span-2">
             <Label>Notes</Label>
             <Textarea

@@ -19,9 +19,19 @@ import {
   Copy,
   CheckCircle2,
   Upload,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { CloudSetupGuide } from '@/components/cloud-setup-guide';
 import { RecycleBinDialog } from '@/components/recycle-bin-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -552,6 +562,8 @@ export const SettingsPage = () => {
               Send test email (cloud)
             </Button>
 
+            <CalendarAppsScriptButton />
+
             {s.cloudLastSyncedAt && (
               <span className="ml-auto text-xs text-muted-foreground">
                 Last synced: {new Date(s.cloudLastSyncedAt).toLocaleString()}
@@ -592,6 +604,30 @@ export const SettingsPage = () => {
           <Button variant="outline" onClick={exportJson}>
             <Download className="h-4 w-4" />
             Export all data as JSON
+          </Button>
+          <Button
+            variant="outline"
+            onClick={async () => {
+              try {
+                const r = await window.policyhub.exportEverything();
+                if (r?.saved) {
+                  const total = Object.values(r.sheets ?? {}).reduce(
+                    (a, b) => a + (b ?? 0),
+                    0,
+                  );
+                  toast.success(`Exported ${total} rows across ${Object.keys(r.sheets ?? {}).length} sheets`, {
+                    description: r.path,
+                  });
+                }
+              } catch (err) {
+                toast.error('Export failed', {
+                  description: (err as Error).message,
+                });
+              }
+            }}
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            Export everything to Excel
           </Button>
           <RecycleBinDialog />
           <div className="ml-auto">
@@ -649,3 +685,77 @@ const Field = ({ label, children }: { label: string; children: React.ReactNode }
     {children}
   </div>
 );
+
+// Surfaces the Apps Script extension snippet for the Calendar feature.
+// User copies it into the same Apps Script project they set up for
+// policy reminders, then sets up a daily time-driven trigger on the
+// `calendarReminderTick_` function the snippet defines.
+const CalendarAppsScriptButton = () => {
+  const [code, setCode] = useState('');
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const load = async () => {
+    try {
+      const c = await window.policyhub.calendar.appsScript();
+      setCode(c);
+    } catch (err) {
+      toast.error('Could not load script', { description: (err as Error).message });
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (o && !code) load();
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button variant="outline">
+          <Copy className="h-4 w-4" />
+          Calendar Apps Script extension
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Calendar reminders — Apps Script extension</DialogTitle>
+          <DialogDescription>
+            Copy this code and paste it at the bottom of the same Apps Script
+            project that already powers your policy reminders. Then redeploy
+            (Deploy → Manage deployments → edit → Save) and add a daily
+            time-driven trigger on{' '}
+            <span className="font-mono text-xs">calendarReminderTick_</span>.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="relative">
+          <pre className="max-h-[55vh] overflow-auto rounded-md border bg-muted/30 p-3 text-[11px] leading-relaxed">
+            <code>{code || 'Loading…'}</code>
+          </pre>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="absolute right-2 top-2"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(code);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              } catch {
+                toast.error('Could not copy');
+              }
+            }}
+          >
+            {copied ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            {copied ? 'Copied' : 'Copy'}
+          </Button>
+        </div>
+        <DialogFooter>
+          <Button onClick={() => setOpen(false)}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};

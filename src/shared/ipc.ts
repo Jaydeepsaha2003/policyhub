@@ -55,6 +55,40 @@ export const IPC = {
   repaymentsDownloadTemplate: 'repayments:downloadTemplate',
   repaymentsImportTemplate: 'repayments:importTemplate',
 
+  // Mutual Funds
+  mutualFundsList: 'mutualFunds:list',
+  mutualFundsGet: 'mutualFunds:get',
+  mutualFundsCreate: 'mutualFunds:create',
+  mutualFundsUpdate: 'mutualFunds:update',
+  mutualFundsDelete: 'mutualFunds:delete',
+  mutualFundsListDeleted: 'mutualFunds:listDeleted',
+  mutualFundsRestore: 'mutualFunds:restore',
+  mutualFundsPurge: 'mutualFunds:purge',
+  mutualFundsExportExcel: 'mutualFunds:exportExcel',
+  mfPaymentsListByFund: 'mfPayments:listByFund',
+  mfPaymentsListAll: 'mfPayments:listAll',
+  mfPaymentsMarkPaid: 'mfPayments:markPaid',
+  mfPaymentsUpdate: 'mfPayments:update',
+
+  // Calendar / Compliance events
+  calendarList: 'calendar:list',
+  calendarGet: 'calendar:get',
+  calendarCreate: 'calendar:create',
+  calendarUpdate: 'calendar:update',
+  calendarMarkCompleted: 'calendar:markCompleted',
+  calendarMarkPending: 'calendar:markPending',
+  calendarMarkSkipped: 'calendar:markSkipped',
+  calendarDelete: 'calendar:delete',
+  calendarDeleteSeries: 'calendar:deleteSeries',
+  calendarListDeleted: 'calendar:listDeleted',
+  calendarRestore: 'calendar:restore',
+  calendarPurge: 'calendar:purge',
+  calendarAppsScript: 'calendar:appsScript',
+
+  // Unified multi-sheet export
+  exportEverything: 'export:everything',
+  paymentsExportWorkbook: 'payments:exportWorkbook',
+
   // Attachments
   attachmentsList: 'attachments:list',
   attachmentsAdd: 'attachments:add',                // multi-file picker + write to DB

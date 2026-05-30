@@ -195,6 +195,74 @@ const applySchema = (sqlite: Database.Database) => {
     );
     CREATE INDEX IF NOT EXISTS idx_monthly_reminder_send_date
       ON monthly_reminder_log(send_date, email_to);
+
+    CREATE TABLE IF NOT EXISTS mutual_funds (
+      id TEXT PRIMARY KEY,
+      folio_no TEXT NOT NULL,
+      account_holder TEXT NOT NULL,
+      agent_name TEXT,
+      agent_contact TEXT,
+      provider TEXT NOT NULL,
+      scheme_name TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'lumpsum',
+      amount INTEGER NOT NULL,
+      start_date TEXT NOT NULL,
+      installment_count INTEGER NOT NULL DEFAULT 1,
+      status TEXT NOT NULL DEFAULT 'active',
+      debit_bank_name TEXT,
+      debit_account_no TEXT,
+      debit_ifsc TEXT,
+      debit_account_holder TEXT,
+      debit_branch_name TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      deleted_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS mutual_fund_payments (
+      id TEXT PRIMARY KEY,
+      mutual_fund_id TEXT NOT NULL REFERENCES mutual_funds(id) ON DELETE CASCADE,
+      installment_no INTEGER NOT NULL,
+      due_date TEXT NOT NULL,
+      expected_amount INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      paid_date TEXT,
+      paid_amount INTEGER,
+      payment_method TEXT,
+      payment_source TEXT,
+      payment_source_name TEXT,
+      receipt_no TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_mf_payments_fund ON mutual_fund_payments(mutual_fund_id);
+    CREATE INDEX IF NOT EXISTS idx_mf_payments_status_due ON mutual_fund_payments(status, due_date);
+
+    CREATE TABLE IF NOT EXISTS calendar_events (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'other',
+      custom_category TEXT,
+      event_date TEXT NOT NULL,
+      series_id TEXT NOT NULL,
+      is_recurring INTEGER NOT NULL DEFAULT 0,
+      frequency TEXT NOT NULL DEFAULT 'one_time',
+      occurrence_no INTEGER NOT NULL DEFAULT 1,
+      occurrence_total INTEGER NOT NULL DEFAULT 1,
+      status TEXT NOT NULL DEFAULT 'pending',
+      completed_date TEXT,
+      reminder_offsets_days TEXT NOT NULL DEFAULT '[30,7,1]',
+      amount INTEGER,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      deleted_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_calendar_events_date ON calendar_events(event_date);
+    CREATE INDEX IF NOT EXISTS idx_calendar_events_series ON calendar_events(series_id);
+    CREATE INDEX IF NOT EXISTS idx_calendar_events_status ON calendar_events(status, event_date);
   `);
 
   // Idempotent ALTERs for upgrades from earlier schema versions.
@@ -216,6 +284,12 @@ const applySchema = (sqlite: Database.Database) => {
   addColumnIfMissing(sqlite, 'settings', 'cloud_last_synced_at', 'TEXT');
   addColumnIfMissing(sqlite, 'settings', 'cloud_sync_on_change', 'INTEGER NOT NULL DEFAULT 0');
   addColumnIfMissing(sqlite, 'policies', 'deleted_at', 'TEXT');
+  // Mutual Funds — debit account columns (added in v0.4.1).
+  addColumnIfMissing(sqlite, 'mutual_funds', 'debit_bank_name', 'TEXT');
+  addColumnIfMissing(sqlite, 'mutual_funds', 'debit_account_no', 'TEXT');
+  addColumnIfMissing(sqlite, 'mutual_funds', 'debit_ifsc', 'TEXT');
+  addColumnIfMissing(sqlite, 'mutual_funds', 'debit_account_holder', 'TEXT');
+  addColumnIfMissing(sqlite, 'mutual_funds', 'debit_branch_name', 'TEXT');
 
   // Auto-purge: hard-delete policies that have been in the recycle bin for
   // more than 90 days. Repayments are unlinked via ON DELETE SET NULL,
@@ -260,6 +334,34 @@ const applySchema = (sqlite: Database.Database) => {
       .run();
   } catch (err) {
     console.error('[db] orphan-repayment cleanup failed', err);
+  }
+
+  // Mutual-fund recycle bin: same 90-day rule as policies. Linked
+  // mutual_fund_payments cascade-delete via the schema, so no extra
+  // step needed here.
+  try {
+    sqlite
+      .prepare(
+        `DELETE FROM mutual_funds
+          WHERE deleted_at IS NOT NULL
+            AND datetime(deleted_at, '+90 days') < datetime('now')`,
+      )
+      .run();
+  } catch (err) {
+    console.error('[db] mutual-funds auto-purge failed', err);
+  }
+
+  // Calendar events recycle bin: same 90-day rule.
+  try {
+    sqlite
+      .prepare(
+        `DELETE FROM calendar_events
+          WHERE deleted_at IS NOT NULL
+            AND datetime(deleted_at, '+90 days') < datetime('now')`,
+      )
+      .run();
+  } catch (err) {
+    console.error('[db] calendar-events auto-purge failed', err);
   }
 
   // Migration: rename policy_term_years → policy_term_months and multiply by 12.

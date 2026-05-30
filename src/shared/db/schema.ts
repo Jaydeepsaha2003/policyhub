@@ -195,6 +195,142 @@ export const repayments = sqliteTable('repayments', {
 
 export type Repayment = typeof repayments.$inferSelect;
 
+// ---- Mutual Funds ----
+//
+// Same recycle-bin parity as policies (deletedAt). A `monthly` MF behaves
+// like a SIP — its installments live in mutual_fund_payments and surface
+// in the unified Payments tab alongside premium installments. A `lumpsum`
+// MF is a one-time investment record (still gets one installment row so
+// the Payments tab can show it).
+export const mutualFunds = sqliteTable('mutual_funds', {
+  id: text('id').primaryKey(),
+  folioNo: text('folio_no').notNull(),
+  accountHolder: text('account_holder').notNull(),
+  agentName: text('agent_name'),
+  agentContact: text('agent_contact'),
+  provider: text('provider').notNull(),
+  schemeName: text('scheme_name').notNull(),
+  type: text('type', { enum: ['lumpsum', 'monthly'] })
+    .notNull()
+    .default('lumpsum'),
+  amount: integer('amount').notNull(), // paise — per-installment for monthly, total for lumpsum
+  startDate: text('start_date').notNull(),
+  // For monthly: number of SIP installments to generate. For lumpsum: 1.
+  installmentCount: integer('installment_count').notNull().default(1),
+  status: text('status', { enum: ['active', 'redeemed', 'closed'] })
+    .notNull()
+    .default('active'),
+  // Default debit account — the bank account this SIP/lumpsum is paid
+  // from. All optional. The mark-paid dialog pre-fills source / source
+  // name from these but allows override per installment (so if a single
+  // month came out of a different account, the user can correct it).
+  debitBankName: text('debit_bank_name'),
+  debitAccountNo: text('debit_account_no'),
+  debitIfsc: text('debit_ifsc'),
+  debitAccountHolder: text('debit_account_holder'),
+  debitBranchName: text('debit_branch_name'),
+  notes: text('notes'),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`(CURRENT_TIMESTAMP)`),
+  updatedAt: text('updated_at')
+    .notNull()
+    .default(sql`(CURRENT_TIMESTAMP)`),
+  deletedAt: text('deleted_at'),
+});
+
+export type MutualFund = typeof mutualFunds.$inferSelect;
+
+export const mutualFundPayments = sqliteTable('mutual_fund_payments', {
+  id: text('id').primaryKey(),
+  mutualFundId: text('mutual_fund_id')
+    .notNull()
+    .references(() => mutualFunds.id, { onDelete: 'cascade' }),
+  installmentNo: integer('installment_no').notNull(),
+  dueDate: text('due_date').notNull(),
+  expectedAmount: integer('expected_amount').notNull(), // paise
+  status: text('status', { enum: ['pending', 'paid', 'overdue'] })
+    .notNull()
+    .default('pending'),
+  paidDate: text('paid_date'),
+  paidAmount: integer('paid_amount'),
+  paymentMethod: text('payment_method'),
+  paymentSource: text('payment_source'),
+  paymentSourceName: text('payment_source_name'),
+  receiptNo: text('receipt_no'),
+  notes: text('notes'),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`(CURRENT_TIMESTAMP)`),
+  updatedAt: text('updated_at')
+    .notNull()
+    .default(sql`(CURRENT_TIMESTAMP)`),
+});
+
+export type MutualFundPayment = typeof mutualFundPayments.$inferSelect;
+
+// ---- Calendar Events ----
+//
+// General-purpose reminder/compliance tracker — credit-card dues, health
+// insurance renewals, motor PUC, property tax, RR badge, audits, etc.
+// Each row is one occurrence (a specific date). Recurring rules are
+// expanded into N occurrence rows up-front, so each can be marked
+// complete / skipped individually.
+export const calendarEvents = sqliteTable('calendar_events', {
+  id: text('id').primaryKey(),
+  title: text('title').notNull(),
+  category: text('category', {
+    enum: [
+      'credit_card',
+      'health_insurance',
+      'motor_insurance',
+      'property_insurance',
+      'property_tax',
+      'rr_badge',
+      'audit',
+      'vehicle_puc',
+      'vehicle_fitness',
+      'license_renewal',
+      'other',
+    ],
+  })
+    .notNull()
+    .default('other'),
+  // Free-text label shown when category = 'other'.
+  customCategory: text('custom_category'),
+  eventDate: text('event_date').notNull(), // ISO yyyy-MM-dd
+  // Group id — all occurrences generated from the same recurring rule
+  // share this so we can edit / delete the series as a unit.
+  seriesId: text('series_id').notNull(),
+  // For the head row of a series: stores the frequency + total count
+  // so we can extend the series later. Occurrence rows mirror these.
+  isRecurring: integer('is_recurring', { mode: 'boolean' }).notNull().default(false),
+  frequency: text('frequency', {
+    enum: ['one_time', 'monthly', 'quarterly', 'half_yearly', 'yearly'],
+  })
+    .notNull()
+    .default('one_time'),
+  occurrenceNo: integer('occurrence_no').notNull().default(1),
+  occurrenceTotal: integer('occurrence_total').notNull().default(1),
+  status: text('status', { enum: ['pending', 'completed', 'skipped'] })
+    .notNull()
+    .default('pending'),
+  completedDate: text('completed_date'),
+  // Days-before-due reminder offsets, JSON-encoded e.g. "[30,14,7,1]".
+  reminderOffsetsDays: text('reminder_offsets_days').notNull().default('[30,7,1]'),
+  amount: integer('amount'), // optional, paise (e.g. expected credit-card bill)
+  notes: text('notes'),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`(CURRENT_TIMESTAMP)`),
+  updatedAt: text('updated_at')
+    .notNull()
+    .default(sql`(CURRENT_TIMESTAMP)`),
+  deletedAt: text('deleted_at'),
+});
+
+export type CalendarEvent = typeof calendarEvents.$inferSelect;
+
 export const attachments = sqliteTable('attachments', {
   id: text('id').primaryKey(),
   policyId: text('policy_id')

@@ -11,6 +11,12 @@ import { PaymentsPage } from './pages/payments';
 import { RemindersPage } from './pages/reminders';
 import { ValuationPage } from './pages/valuation';
 import { RepaymentsPage } from './pages/repayments';
+import { MutualFundsPage } from './pages/mutual-funds';
+import { MutualFundFormPage } from './pages/mutual-fund-form';
+import { MutualFundDetailPage } from './pages/mutual-fund-detail';
+import { CalendarPage } from './pages/calendar';
+import { CalendarFormPage } from './pages/calendar-form';
+import { CalendarDetailPage } from './pages/calendar-detail';
 import { SettingsPage } from './pages/settings';
 import { Loader2 } from 'lucide-react';
 
@@ -25,6 +31,18 @@ const PageSwitch = () => {
       return <PolicyFormPage mode="create" />;
     case 'policy-detail':
       return <PolicyDetailPage id={route.id} />;
+    case 'mutual-funds':
+      return <MutualFundsPage />;
+    case 'mutual-fund-new':
+      return <MutualFundFormPage mode="create" />;
+    case 'mutual-fund-detail':
+      return <MutualFundDetailPage id={route.id} />;
+    case 'calendar':
+      return <CalendarPage />;
+    case 'calendar-new':
+      return <CalendarFormPage mode="create" />;
+    case 'calendar-detail':
+      return <CalendarDetailPage id={route.id} />;
     case 'payments':
       return <PaymentsPage />;
     case 'reminders':

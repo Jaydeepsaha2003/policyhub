@@ -20,6 +20,22 @@ export type ValuationExportRow = {
   estimatedValuationPaise: number;
 };
 
+export type ValuationMfExportRow = {
+  folioNo: string;
+  accountHolder: string;
+  provider: string;
+  schemeName: string;
+  fundType: string;                // 'lumpsum' | 'monthly'
+  installmentCount: number;
+  startDate: string;
+  roiPct: number;
+  compoundingFrequency: string;
+  valuationDate: string;
+  totalContributedPaise: number;
+  contributionsCount: number;
+  estimatedValuationPaise: number;
+};
+
 const PAISE_TO_RUPEES = (p: number | null | undefined) =>
   p === null || p === undefined ? null : p / 100;
 
@@ -62,8 +78,9 @@ const modeLabel = (m: string): string => {
 
 export const exportValuation = async (
   rows: ValuationExportRow[],
+  mfRows: ValuationMfExportRow[] = [],
 ): Promise<{ saved: boolean; path?: string; rowCount?: number }> => {
-  if (!Array.isArray(rows) || rows.length === 0) {
+  if ((!Array.isArray(rows) || rows.length === 0) && mfRows.length === 0) {
     return { saved: false };
   }
 
@@ -152,6 +169,74 @@ export const exportValuation = async (
   totalRow.getCell(15).numFmt = '#,##0.00';
   totalRow.getCell(15).font = { bold: true };
 
+  // ---- Mutual funds sheet ----
+  if (mfRows.length > 0) {
+    const mfWs = wb.addWorksheet('MF Valuation', {
+      views: [{ state: 'frozen', ySplit: 1 }],
+    });
+    const mfCols: Col[] = [
+      { header: 'Folio No', width: 18 },
+      { header: 'Account holder', width: 22 },
+      { header: 'Provider', width: 18 },
+      { header: 'Scheme', width: 28 },
+      { header: 'Type', width: 12 },
+      { header: 'Installments', width: 12 },
+      { header: 'Start date', width: 14 },
+      { header: 'ROI (% p.a.)', width: 12, pct: true },
+      { header: 'Compounding', width: 14 },
+      { header: 'Valuation date', width: 14 },
+      { header: 'Total contributed (₹)', width: 18, money: true },
+      { header: 'Installments counted', width: 18 },
+      { header: 'Estimated valuation (₹)', width: 22, money: true, bold: true },
+    ];
+    mfWs.getRow(1).values = mfCols.map((c) => c.header);
+    mfWs.getRow(1).font = { bold: true };
+    mfWs.columns = mfCols.map((c) => ({ width: c.width }));
+
+    mfRows.forEach((row, i) => {
+      const r = mfWs.getRow(i + 2);
+      r.values = [
+        row.folioNo,
+        row.accountHolder,
+        row.provider,
+        row.schemeName,
+        row.fundType === 'monthly' ? 'Monthly SIP' : 'Lumpsum',
+        row.installmentCount,
+        isoToDmy(row.startDate),
+        row.roiPct,
+        freqLabel(row.compoundingFrequency),
+        isoToDmy(row.valuationDate),
+        PAISE_TO_RUPEES(row.totalContributedPaise),
+        row.contributionsCount,
+        PAISE_TO_RUPEES(row.estimatedValuationPaise),
+      ];
+      mfCols.forEach((c, idx) => {
+        const cell = r.getCell(idx + 1);
+        if (c.money) cell.numFmt = '#,##0.00';
+        if (c.pct) cell.numFmt = '0.00';
+        if (c.bold) cell.font = { bold: true };
+      });
+    });
+
+    const mfTotalRow = mfWs.getRow(mfRows.length + 2);
+    const mfTotalContrib = mfRows.reduce(
+      (s, r) => s + (r.totalContributedPaise || 0),
+      0,
+    );
+    const mfTotalVal = mfRows.reduce(
+      (s, r) => s + (r.estimatedValuationPaise || 0),
+      0,
+    );
+    mfTotalRow.getCell(1).value = 'TOTAL';
+    mfTotalRow.getCell(1).font = { bold: true };
+    mfTotalRow.getCell(11).value = PAISE_TO_RUPEES(mfTotalContrib);
+    mfTotalRow.getCell(11).numFmt = '#,##0.00';
+    mfTotalRow.getCell(11).font = { bold: true };
+    mfTotalRow.getCell(13).value = PAISE_TO_RUPEES(mfTotalVal);
+    mfTotalRow.getCell(13).numFmt = '#,##0.00';
+    mfTotalRow.getCell(13).font = { bold: true };
+  }
+
   await wb.xlsx.writeFile(filePath);
-  return { saved: true, path: filePath, rowCount: rows.length };
+  return { saved: true, path: filePath, rowCount: rows.length + mfRows.length };
 };

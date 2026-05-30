@@ -44,10 +44,11 @@ const api = {
     purge: (id: string) => invoke(IPC.policiesPurge, id),
   },
   valuation: {
-    exportExcel: (rows: unknown[]) =>
+    exportExcel: (rows: unknown[], mfRows?: unknown[]) =>
       invoke<{ saved: boolean; path?: string; rowCount?: number }>(
         IPC.valuationExportExcel,
         rows,
+        mfRows,
       ),
   },
   payments: {
@@ -93,6 +94,53 @@ const api = {
     downloadTemplate: () => invoke(IPC.repaymentsDownloadTemplate),
     importTemplate: () => invoke(IPC.repaymentsImportTemplate),
   },
+  mutualFunds: {
+    list: () => invoke<any[]>(IPC.mutualFundsList),
+    get: (id: string) => invoke(IPC.mutualFundsGet, id),
+    create: (input: unknown) => invoke(IPC.mutualFundsCreate, input),
+    update: (id: string, input: unknown) => invoke(IPC.mutualFundsUpdate, id, input),
+    remove: (id: string) => invoke(IPC.mutualFundsDelete, id),
+    listDeleted: () => invoke<any[]>(IPC.mutualFundsListDeleted),
+    restore: (id: string) => invoke(IPC.mutualFundsRestore, id),
+    purge: (id: string) => invoke(IPC.mutualFundsPurge, id),
+    exportExcel: (opts?: { mutualFundIds?: string[] }) =>
+      invoke<{ saved: boolean; path?: string; rowCount?: number }>(
+        IPC.mutualFundsExportExcel,
+        opts,
+      ),
+  },
+  mfPayments: {
+    listByFund: (mutualFundId: string) =>
+      invoke<any[]>(IPC.mfPaymentsListByFund, mutualFundId),
+    listAll: (filters?: unknown) => invoke<any[]>(IPC.mfPaymentsListAll, filters),
+    markPaid: (input: unknown) => invoke(IPC.mfPaymentsMarkPaid, input),
+    update: (input: unknown) => invoke(IPC.mfPaymentsUpdate, input),
+  },
+  calendar: {
+    list: (filters?: unknown) => invoke<any[]>(IPC.calendarList, filters),
+    get: (id: string) => invoke(IPC.calendarGet, id),
+    create: (input: unknown) => invoke(IPC.calendarCreate, input),
+    update: (id: string, input: unknown) => invoke(IPC.calendarUpdate, id, input),
+    markCompleted: (id: string, completedDate?: string) =>
+      invoke(IPC.calendarMarkCompleted, id, completedDate),
+    markPending: (id: string) => invoke(IPC.calendarMarkPending, id),
+    markSkipped: (id: string) => invoke(IPC.calendarMarkSkipped, id),
+    remove: (id: string) => invoke(IPC.calendarDelete, id),
+    removeSeries: (id: string) => invoke(IPC.calendarDeleteSeries, id),
+    listDeleted: () => invoke<any[]>(IPC.calendarListDeleted),
+    restore: (id: string) => invoke(IPC.calendarRestore, id),
+    purge: (id: string) => invoke(IPC.calendarPurge, id),
+    appsScript: () => invoke<string>(IPC.calendarAppsScript),
+  },
+  exportEverything: () =>
+    invoke<{ saved: boolean; path?: string; sheets?: Record<string, number> }>(
+      IPC.exportEverything,
+    ),
+  paymentsExportWorkbook: (opts?: { paymentIds?: string[]; mfPaymentIds?: string[] }) =>
+    invoke<{ saved: boolean; path?: string; sheets?: Record<string, number> }>(
+      IPC.paymentsExportWorkbook,
+      opts,
+    ),
   attachments: {
     list: (policyId: string) => invoke(IPC.attachmentsList, policyId),
     add: (policyId: string) => invoke(IPC.attachmentsAdd, policyId),

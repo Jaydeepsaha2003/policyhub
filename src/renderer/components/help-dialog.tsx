@@ -188,9 +188,125 @@ const RepaymentsHelp = () => (
   </div>
 );
 
+const MutualFundsHelp = () => (
+  <div className="space-y-4 text-sm leading-relaxed">
+    <section>
+      <h3 className="mb-1 font-semibold">What's the Mutual Funds tab for?</h3>
+      <p className="text-muted-foreground">
+        Track every mutual fund you hold — Lumpsum investments or recurring
+        Monthly SIPs. Capture folio number, account holder, AMC, scheme name
+        and your agent's contact, just like a policy.
+      </p>
+    </section>
+    <section>
+      <h3 className="mb-1 font-semibold">Lumpsum vs Monthly</h3>
+      <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
+        <li>
+          <strong>Lumpsum</strong> — a one-time investment. PolicyHub creates
+          a single record on your start date.
+        </li>
+        <li>
+          <strong>Monthly</strong> — a SIP. PolicyHub creates monthly
+          installments starting from your start date. They appear in the
+          Payments tab alongside policy premiums and can be marked paid the
+          same way.
+        </li>
+      </ul>
+    </section>
+    <section>
+      <h3 className="mb-1 font-semibold">Where do SIP installments show up?</h3>
+      <p className="text-muted-foreground">
+        In the <strong>Payments</strong> tab, mixed with policy installments.
+        A "Type" column tells you which is which, and a Type filter lets you
+        show only one kind at a time.
+      </p>
+    </section>
+    <section>
+      <h3 className="mb-1 font-semibold">Recycle Bin works for MFs too</h3>
+      <p className="text-muted-foreground">
+        Deleting a mutual fund moves it to the same 90-day Recycle Bin as
+        policies. All its SIP installments get hidden until you restore.
+      </p>
+    </section>
+    <section>
+      <h3 className="mb-1 font-semibold">Excel exports</h3>
+      <p className="text-muted-foreground">
+        The <strong>Mutual Funds → Export to Excel</strong> button honors any
+        filters you've set on the page. For a complete snapshot of every
+        policy + MF + payment + repayment, use{' '}
+        <strong>Settings → Export everything to Excel</strong> — it produces a
+        single workbook with one sheet per section.
+      </p>
+    </section>
+  </div>
+);
+
+const CalendarHelp = () => (
+  <div className="space-y-4 text-sm leading-relaxed">
+    <section>
+      <h3 className="mb-1 font-semibold">What's the Calendar tab for?</h3>
+      <p className="text-muted-foreground">
+        A general reminder tracker for everything that isn't a policy or
+        mutual fund — credit-card bills, health/motor/property insurance
+        renewals, property tax, RR badge compliance, audits, vehicle PUC
+        and fitness, license renewals, or anything else you label "Other".
+      </p>
+    </section>
+    <section>
+      <h3 className="mb-1 font-semibold">Two views</h3>
+      <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
+        <li>
+          <strong>Calendar</strong> — month grid, events as colored chips on
+          their due date. Click a chip to open the event.
+        </li>
+        <li>
+          <strong>List</strong> — sortable/filterable table by category, status
+          or date.
+        </li>
+      </ul>
+    </section>
+    <section>
+      <h3 className="mb-1 font-semibold">Recurring vs single events</h3>
+      <p className="text-muted-foreground">
+        Toggle "Recurring" on the form to generate multiple occurrences
+        automatically (e.g. monthly credit-card bill × 12). Each occurrence
+        can be marked complete or skipped independently. Editing the rule
+        rebuilds future pending rows but keeps completed history intact.
+      </p>
+    </section>
+    <section>
+      <h3 className="mb-1 font-semibold">Email reminders via Google Sheets</h3>
+      <p className="text-muted-foreground">
+        Calendar events are pushed to a new <strong>Calendar Events</strong>{' '}
+        sheet in your existing cloud sync workbook. The Apps Script reads
+        the <em>Reminder offsets (days)</em> array on each event and sends
+        you an email that many days before the due date.
+      </p>
+      <p className="mt-2 text-muted-foreground">
+        First-time setup: open Settings → Google Sheets sync → click{' '}
+        <strong>Calendar Apps Script extension</strong>, copy the snippet,
+        paste it at the bottom of your existing Apps Script project, save,
+        and add a daily time-driven trigger on{' '}
+        <span className="font-mono text-xs">calendarReminderTick_</span>.
+        Policies / payments / repayments sync continues unchanged.
+      </p>
+    </section>
+    <section>
+      <h3 className="mb-1 font-semibold">Recycle Bin</h3>
+      <p className="text-muted-foreground">
+        Same 90-day Recycle Bin as policies and mutual funds. Deleting a
+        recurring event prompts you to either drop just this one occurrence
+        or the whole remaining series.
+      </p>
+    </section>
+  </div>
+);
+
 const topics: Topic[] = [
   { id: 'recycle-bin', title: 'Recycle Bin', content: <RecycleBinHelp /> },
   { id: 'policies', title: 'Policies', content: <PoliciesHelp /> },
+  { id: 'mutual-funds', title: 'Mutual Funds', content: <MutualFundsHelp /> },
+  { id: 'calendar', title: 'Calendar', content: <CalendarHelp /> },
   { id: 'payments', title: 'Payments', content: <PaymentsHelp /> },
   { id: 'repayments', title: 'Repayments', content: <RepaymentsHelp /> },
 ];

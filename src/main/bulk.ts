@@ -5,7 +5,7 @@ import ExcelJS from 'exceljs';
 import { format, parseISO } from 'date-fns';
 import { eq, sql } from 'drizzle-orm';
 import { getDb, getRawSqlite } from './db';
-import { premiumPayments, policies } from '../shared/db/schema';
+import { premiumPayments, policies, mutualFundPayments } from '../shared/db/schema';
 
 // ---- Template generation ----
 
@@ -267,11 +267,167 @@ export const generateTemplate = async (opts?: {
     '3. Leave a row\'s yellow cells blank if you don\'t want to update that row.',
     '4. Do NOT edit the "Payment ID" column — PolicyHub uses it to match the row back to the database.',
     '5. When done, in PolicyHub go to Payments → "Upload filled template" and pick this file.',
+    '',
+    'Mutual fund SIPs (see "MF Payments" sheet):',
+    '   • Same rules — fill yellow columns, leave row blank to skip.',
+    '   • The "Name of Source" is pre-filled from the fund\'s debit account; change it if a specific month came from a different account.',
+    '   • Both sheets are processed together when you upload — you can update policies and SIPs in one go.',
   ];
   lines.forEach((l, i) => {
     help.getCell(i + 2, 1).value = l;
     help.getCell(i + 2, 1).alignment = { wrapText: true, vertical: 'top' };
   });
+
+  // ---- MF Payments sheet (editable, mirrors the policy template) ----
+  // Mark-as-paid for SIP installments — fill the YELLOW columns, then
+  // upload the same workbook. The importer reads this sheet and updates
+  // mutual_fund_payments rows.
+  const sqlite = getRawSqlite();
+  const mfRows = sqlite
+    .prepare(
+      `SELECT mp.id AS paymentId,
+              m.folio_no AS folioNo,
+              m.account_holder AS accountHolder,
+              m.provider, m.scheme_name AS schemeName,
+              m.type AS fundType,
+              m.debit_bank_name AS debitBankName,
+              m.debit_account_no AS debitAccountNo,
+              mp.installment_no AS installmentNo,
+              mp.due_date AS dueDate,
+              mp.expected_amount AS expectedAmountPaise,
+              mp.status AS status
+         FROM mutual_fund_payments mp
+         JOIN mutual_funds m ON m.id = mp.mutual_fund_id
+        WHERE m.deleted_at IS NULL
+          AND mp.status IN ('pending', 'overdue')
+        ORDER BY mp.due_date ASC, m.folio_no ASC`,
+    )
+    .all() as Array<{
+    paymentId: string;
+    folioNo: string;
+    accountHolder: string;
+    provider: string;
+    schemeName: string;
+    fundType: string;
+    debitBankName: string | null;
+    debitAccountNo: string | null;
+    installmentNo: number;
+    dueDate: string;
+    expectedAmountPaise: number;
+    status: string;
+  }>;
+
+  const mfWs = wb.addWorksheet('MF Payments', {
+    views: [{ state: 'frozen', ySplit: 2, xSplit: 1 }],
+  });
+  // Banner row.
+  mfWs.mergeCells('A1:M1');
+  mfWs.getCell('A1').value =
+    'Mutual-fund SIP update — fill in the YELLOW columns below, then upload. Do NOT edit the "Payment ID" column.';
+  mfWs.getCell('A1').font = { bold: true, color: { argb: 'FF6D28D9' } };
+  mfWs.getCell('A1').alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+  mfWs.getRow(1).height = 36;
+
+  const mfHeaders = [
+    'Payment ID',        // A — locked
+    'Folio No',          // B
+    'Holder',            // C
+    'Provider',          // D
+    'Scheme',            // E
+    'Installment #',     // F
+    'Due',               // G
+    'Expected (₹)',      // H
+    'Status',            // I
+    // Editable from here:
+    'Paid Date',         // J
+    'Paid Amount (₹)',   // K
+    'Payment Source',    // L (Bank/UPI/Auto-debit/...)
+    'Name of Source',    // M (pre-filled from debit account)
+    'Ref No',            // N
+    'Notes',             // O
+  ];
+  mfWs.getRow(2).values = mfHeaders;
+  mfWs.getRow(2).font = { bold: true };
+  mfWs.getRow(2).alignment = { vertical: 'middle' };
+
+  for (let c = 1; c <= 9; c++) mfWs.getCell(2, c).fill = fillGrey;
+  for (let c = 10; c <= 15; c++) mfWs.getCell(2, c).fill = fillYellow;
+
+  mfWs.columns = [
+    { width: 36 }, // A payment id
+    { width: 18 }, // B folio
+    { width: 22 }, // C holder
+    { width: 18 }, // D provider
+    { width: 28 }, // E scheme
+    { width: 12 }, // F installment
+    { width: 12 }, // G due
+    { width: 14 }, // H expected
+    { width: 10 }, // I status
+    { width: 14 }, // J paid date
+    { width: 14 }, // K paid amount
+    { width: 16 }, // L source
+    { width: 24 }, // M name of source
+    { width: 18 }, // N ref no
+    { width: 32 }, // O notes
+  ];
+
+  mfRows.forEach((r, i) => {
+    const rowIndex = i + 3;
+    const row = mfWs.getRow(rowIndex);
+    // Pre-fill "Name of Source" from the fund's default debit account so
+    // the common case is one click + upload. User can override per row.
+    const debitTail = r.debitAccountNo
+      ? r.debitAccountNo.replace(/\s+/g, '').slice(-4)
+      : '';
+    const defaultSourceName = r.debitBankName
+      ? debitTail
+        ? `${r.debitBankName} · …${debitTail}`
+        : r.debitBankName
+      : '';
+    row.values = [
+      r.paymentId,
+      r.folioNo,
+      r.accountHolder,
+      r.provider,
+      r.schemeName,
+      r.installmentNo,
+      r.dueDate,
+      Number((r.expectedAmountPaise / 100).toFixed(2)),
+      r.status,
+      // editable blanks:
+      '',                                                   // J paid date
+      Number((r.expectedAmountPaise / 100).toFixed(2)),     // K paid amount
+      r.debitBankName ? 'Bank' : '',                        // L source default
+      defaultSourceName,                                    // M name of source
+      '',                                                   // N ref no
+      '',                                                   // O notes
+    ];
+    for (let c = 1; c <= 9; c++) {
+      const cell = row.getCell(c);
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+      cell.protection = { locked: true };
+    }
+    for (let c = 10; c <= 15; c++) {
+      row.getCell(c).protection = { locked: false };
+    }
+    row.getCell(8).numFmt = '#,##0.00';   // expected
+    row.getCell(11).numFmt = '#,##0.00';  // paid
+    row.getCell(7).numFmt = 'yyyy-mm-dd'; // due
+    row.getCell(10).numFmt = 'yyyy-mm-dd';// paid date
+  });
+
+  // Source dropdown for MF sheet (column L = 12), rows 3..N.
+  if (mfRows.length > 0) {
+    const lastRow = mfRows.length + 2;
+    (mfWs as any).dataValidations.add(`L3:L${lastRow}`, {
+      type: 'list',
+      allowBlank: true,
+      formulae: [`"${PAYMENT_SOURCES.join(',')}"`],
+      showErrorMessage: true,
+      errorTitle: 'Invalid value',
+      error: `Pick one of: ${PAYMENT_SOURCES.join(', ')}`,
+    });
+  }
 
   await wb.xlsx.writeFile(filePath);
   return { saved: true, path: filePath, rowCount: rows.length };
@@ -350,15 +506,22 @@ export const importTemplate = async (): Promise<ImportResult> => {
 
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.readFile(filePath);
-  const ws = wb.getWorksheet('Payments') ?? wb.worksheets[0];
-  if (!ws) {
+  const ws = wb.getWorksheet('Payments');
+  // No "Payments" or "MF Payments" sheet → not our template.
+  if (!ws && !wb.getWorksheet('MF Payments')) {
     return {
       picked: true,
       file: filePath,
       totalRows: 0,
       updated: 0,
       skipped: 0,
-      errors: [{ row: 0, reason: 'Could not find a "Payments" worksheet in the file' }],
+      errors: [
+        {
+          row: 0,
+          reason:
+            'Could not find a "Payments" or "MF Payments" worksheet in the file',
+        },
+      ],
     };
   }
 
@@ -390,8 +553,9 @@ export const importTemplate = async (): Promise<ImportResult> => {
   `);
 
   // Data starts on row 3 (row 1 banner, row 2 headers).
-  const lastRow = ws.actualRowCount;
-  for (let r = 3; r <= lastRow; r++) {
+  // Skip the policy loop entirely if the user only filled the MF sheet.
+  const lastRow = ws ? ws.actualRowCount : 0;
+  for (let r = 3; ws && r <= lastRow; r++) {
     const row = ws.getRow(r);
     const paymentId = cellString(row.getCell(1));
     const policyNo = cellString(row.getCell(2));
@@ -517,6 +681,126 @@ export const importTemplate = async (): Promise<ImportResult> => {
         policyNo,
         installmentNo: installmentNoRaw ?? undefined,
       });
+    }
+  }
+
+  // ---- Mutual Fund Payments sheet ----
+  // Same workbook layout as the policy sheet, minus GST / late fee.
+  // Reuse cellString / cellDateIso / cellNumber helpers from above.
+  const mfWs = wb.getWorksheet('MF Payments');
+  if (mfWs) {
+    const mfUpdateStmt = sqlite.prepare(`
+      UPDATE mutual_fund_payments
+         SET status = 'paid',
+             paid_date = @paid_date,
+             paid_amount = @paid_amount,
+             payment_source = @payment_source,
+             payment_source_name = @payment_source_name,
+             receipt_no = @receipt_no,
+             notes = COALESCE(@notes, notes),
+             updated_at = CURRENT_TIMESTAMP
+       WHERE id = @id
+    `);
+
+    const lastMfRow = mfWs.actualRowCount;
+    for (let r = 3; r <= lastMfRow; r++) {
+      const row = mfWs.getRow(r);
+      const paymentId = cellString(row.getCell(1));
+      const folioNo = cellString(row.getCell(2));
+      const installmentNoRaw = cellNumber(row.getCell(6));
+      if (!paymentId) continue;
+
+      const paidDate = cellDateIso(row.getCell(10));
+      const paidAmount = cellNumber(row.getCell(11));
+      const paymentSource = cellString(row.getCell(12)) || null;
+      const sourceName = cellString(row.getCell(13)) || null;
+      const refNo = cellString(row.getCell(14)) || null;
+      const notes = cellString(row.getCell(15)) || null;
+
+      if (
+        !paidDate &&
+        paidAmount === null &&
+        !paymentSource &&
+        !sourceName &&
+        !refNo &&
+        !notes
+      ) {
+        result.skipped++;
+        continue;
+      }
+      result.totalRows++;
+
+      if (!paidDate) {
+        result.errors.push({
+          row: r,
+          reason: '[MF] Paid Date is required',
+          policyNo: folioNo,
+          installmentNo: installmentNoRaw ?? undefined,
+        });
+        continue;
+      }
+      const todayIso = format(new Date(), 'yyyy-MM-dd');
+      if (paidDate > todayIso) {
+        result.errors.push({
+          row: r,
+          reason: "[MF] Paid Date can't be in the future",
+          policyNo: folioNo,
+          installmentNo: installmentNoRaw ?? undefined,
+        });
+        continue;
+      }
+      if (paidAmount !== null && paidAmount <= 0) {
+        result.errors.push({
+          row: r,
+          reason: '[MF] Paid Amount must be greater than zero',
+          policyNo: folioNo,
+          installmentNo: installmentNoRaw ?? undefined,
+        });
+        continue;
+      }
+
+      const existing = db
+        .select()
+        .from(mutualFundPayments)
+        .where(eq(mutualFundPayments.id, paymentId))
+        .get();
+      if (!existing) {
+        result.errors.push({
+          row: r,
+          reason: `[MF] No matching payment for id ${paymentId.slice(0, 8)}…`,
+          policyNo: folioNo,
+          installmentNo: installmentNoRaw ?? undefined,
+        });
+        continue;
+      }
+      if (existing.status === 'paid') {
+        result.skipped++;
+        continue;
+      }
+
+      const finalPaidAmount = RUPEE_TO_PAISE(
+        paidAmount !== null ? paidAmount : existing.expectedAmount / 100,
+      );
+
+      try {
+        mfUpdateStmt.run({
+          id: paymentId,
+          paid_date: paidDate,
+          paid_amount: finalPaidAmount,
+          payment_source: paymentSource,
+          payment_source_name: sourceName,
+          receipt_no: refNo,
+          notes,
+        });
+        result.updated++;
+      } catch (err) {
+        result.errors.push({
+          row: r,
+          reason: `[MF] ${(err as Error).message}`,
+          policyNo: folioNo,
+          installmentNo: installmentNoRaw ?? undefined,
+        });
+      }
     }
   }
 

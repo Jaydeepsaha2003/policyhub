@@ -13,6 +13,18 @@ const titleFor = (name: string): string => {
       return 'New policy';
     case 'policy-detail':
       return 'Policy detail';
+    case 'mutual-funds':
+      return 'Mutual funds';
+    case 'mutual-fund-new':
+      return 'New mutual fund';
+    case 'mutual-fund-detail':
+      return 'Mutual fund detail';
+    case 'calendar':
+      return 'Calendar';
+    case 'calendar-new':
+      return 'New event';
+    case 'calendar-detail':
+      return 'Event detail';
     case 'payments':
       return 'Payments';
     case 'reminders':
@@ -59,6 +71,18 @@ export const Topbar = ({ sidebarCollapsed, onToggleSidebar }: Props) => {
           <Button size="sm" onClick={() => navigate('/policies/new')}>
             <Plus className="h-4 w-4" />
             New policy
+          </Button>
+        )}
+        {route.name === 'mutual-funds' && (
+          <Button size="sm" onClick={() => navigate('/mutual-funds/new')}>
+            <Plus className="h-4 w-4" />
+            New mutual fund
+          </Button>
+        )}
+        {route.name === 'calendar' && (
+          <Button size="sm" onClick={() => navigate('/calendar/new')}>
+            <Plus className="h-4 w-4" />
+            New event
           </Button>
         )}
         <Button

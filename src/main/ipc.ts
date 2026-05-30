@@ -36,6 +36,41 @@ import {
 import { generateTemplate, importTemplate } from './bulk';
 import { exportAllPolicies } from './bulk-policies-export';
 import { generatePolicyTemplate, importPolicyTemplate } from './bulk-policies-import';
+import { exportAllMutualFunds } from './bulk-mutual-funds-export';
+import { exportEverything } from './export-everything';
+import { exportPaymentsWorkbook } from './export-payments';
+import {
+  createMutualFund,
+  deleteMutualFund,
+  getMutualFund,
+  listDeletedMutualFunds,
+  listMutualFunds,
+  purgeMutualFund,
+  restoreMutualFund,
+  updateMutualFund,
+} from './repo/mutual-funds';
+import {
+  listAllMfPayments,
+  listMfPaymentsByFund,
+  markMfOverdueInstallments,
+  markMfPaid,
+  updateMfPayment,
+} from './repo/mf-payments';
+import {
+  createCalendarEvent,
+  deleteCalendarEvent,
+  deleteCalendarEventSeries,
+  getCalendarEvent,
+  listCalendarEvents,
+  listDeletedCalendarEvents,
+  markCalendarEventCompleted,
+  markCalendarEventPending,
+  markCalendarEventSkipped,
+  purgeCalendarEvent,
+  restoreCalendarEvent,
+  updateCalendarEvent,
+} from './repo/calendar-events';
+import { calendarAppsScriptSnippet } from './cloud-sync-calendar';
 import { exportValuation, type ValuationExportRow } from './valuation-export';
 import {
   forceCloudReminders,
@@ -125,7 +160,11 @@ export const registerIpc = () => {
   handle(IPC.policiesListDeleted, () => listDeletedPolicies());
   handleMutate(IPC.policiesRestore, (id: string) => restorePolicy(id));
   handleMutate(IPC.policiesPurge, (id: string) => purgePolicy(id));
-  handle(IPC.valuationExportExcel, (rows: ValuationExportRow[]) => exportValuation(rows));
+  handle(
+    IPC.valuationExportExcel,
+    (rows: ValuationExportRow[], mfRows?: any[]) =>
+      exportValuation(rows, mfRows ?? []),
+  );
 
   // Cloud sync (Google Sheets + Apps Script)
   handle(IPC.cloudSync, () => syncToSheet());
@@ -229,6 +268,65 @@ export const registerIpc = () => {
   handleMutate(IPC.repaymentsDelete, (id: string) => deleteRepayment(id));
   handle(IPC.repaymentsDownloadTemplate, () => generateRepaymentTemplate());
   handleMutate(IPC.repaymentsImportTemplate, () => importRepaymentTemplate());
+
+  // Mutual Funds
+  handle(IPC.mutualFundsList, () => listMutualFunds());
+  handle(IPC.mutualFundsGet, (id: string) => getMutualFund(id));
+  handleMutate(IPC.mutualFundsCreate, (input: any) => {
+    const id = createMutualFund(input);
+    return getMutualFund(id);
+  });
+  handleMutate(IPC.mutualFundsUpdate, (id: string, input: any) => {
+    updateMutualFund(id, input);
+    return getMutualFund(id);
+  });
+  handleMutate(IPC.mutualFundsDelete, (id: string) => deleteMutualFund(id));
+  handle(IPC.mutualFundsListDeleted, () => listDeletedMutualFunds());
+  handleMutate(IPC.mutualFundsRestore, (id: string) => restoreMutualFund(id));
+  handleMutate(IPC.mutualFundsPurge, (id: string) => purgeMutualFund(id));
+  handle(IPC.mutualFundsExportExcel, (opts?: { mutualFundIds?: string[] }) =>
+    exportAllMutualFunds(opts),
+  );
+  handle(IPC.mfPaymentsListByFund, (mutualFundId: string) =>
+    listMfPaymentsByFund(mutualFundId),
+  );
+  handle(IPC.mfPaymentsListAll, (filters?: any) => {
+    markMfOverdueInstallments();
+    return listAllMfPayments(filters);
+  });
+  handleMutate(IPC.mfPaymentsMarkPaid, (input: any) => markMfPaid(input));
+  handleMutate(IPC.mfPaymentsUpdate, (input: any) => updateMfPayment(input));
+
+  // Calendar / compliance events
+  handle(IPC.calendarList, (filters?: any) => listCalendarEvents(filters));
+  handle(IPC.calendarGet, (id: string) => getCalendarEvent(id));
+  handleMutate(IPC.calendarCreate, (input: any) => {
+    const id = createCalendarEvent(input);
+    return getCalendarEvent(id);
+  });
+  handleMutate(IPC.calendarUpdate, (id: string, input: any) => {
+    updateCalendarEvent(id, input);
+    return getCalendarEvent(id);
+  });
+  handleMutate(IPC.calendarMarkCompleted, (id: string, completedDate?: string) =>
+    markCalendarEventCompleted(id, completedDate),
+  );
+  handleMutate(IPC.calendarMarkPending, (id: string) => markCalendarEventPending(id));
+  handleMutate(IPC.calendarMarkSkipped, (id: string) => markCalendarEventSkipped(id));
+  handleMutate(IPC.calendarDelete, (id: string) => deleteCalendarEvent(id));
+  handleMutate(IPC.calendarDeleteSeries, (id: string) => deleteCalendarEventSeries(id));
+  handle(IPC.calendarListDeleted, () => listDeletedCalendarEvents());
+  handleMutate(IPC.calendarRestore, (id: string) => restoreCalendarEvent(id));
+  handleMutate(IPC.calendarPurge, (id: string) => purgeCalendarEvent(id));
+  handle(IPC.calendarAppsScript, () => calendarAppsScriptSnippet());
+
+  // Unified multi-sheet export
+  handle(IPC.exportEverything, () => exportEverything());
+  handle(
+    IPC.paymentsExportWorkbook,
+    (opts?: { paymentIds?: string[]; mfPaymentIds?: string[] }) =>
+      exportPaymentsWorkbook(opts),
+  );
 
   // Attachments
   handle(IPC.attachmentsList, (policyId: string) => listAttachments(policyId));

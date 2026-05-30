@@ -34,6 +34,7 @@ type PolicyHubApi = {
   valuation: {
     exportExcel: (
       rows: unknown[],
+      mfRows?: unknown[],
     ) => Promise<{ saved: boolean; path?: string; rowCount?: number }>;
   };
   payments: {
@@ -96,6 +97,53 @@ type PolicyHubApi = {
       errors: { row: number; reason: string }[];
     }>;
   };
+  mutualFunds: {
+    list: () => Promise<any[]>;
+    get: (id: string) => Promise<any>;
+    create: (input: any) => Promise<any>;
+    update: (id: string, input: any) => Promise<any>;
+    remove: (id: string) => Promise<void>;
+    listDeleted: () => Promise<any[]>;
+    restore: (id: string) => Promise<void>;
+    purge: (id: string) => Promise<void>;
+    exportExcel: (opts?: {
+      mutualFundIds?: string[];
+    }) => Promise<{ saved: boolean; path?: string; rowCount?: number }>;
+  };
+  mfPayments: {
+    listByFund: (mutualFundId: string) => Promise<any[]>;
+    listAll: (filters?: any) => Promise<any[]>;
+    markPaid: (input: any) => Promise<void>;
+    update: (input: any) => Promise<void>;
+  };
+  calendar: {
+    list: (filters?: any) => Promise<any[]>;
+    get: (id: string) => Promise<any>;
+    create: (input: any) => Promise<any>;
+    update: (id: string, input: any) => Promise<any>;
+    markCompleted: (id: string, completedDate?: string) => Promise<void>;
+    markPending: (id: string) => Promise<void>;
+    markSkipped: (id: string) => Promise<void>;
+    remove: (id: string) => Promise<void>;
+    removeSeries: (id: string) => Promise<void>;
+    listDeleted: () => Promise<any[]>;
+    restore: (id: string) => Promise<void>;
+    purge: (id: string) => Promise<void>;
+    appsScript: () => Promise<string>;
+  };
+  exportEverything: () => Promise<{
+    saved: boolean;
+    path?: string;
+    sheets?: Record<string, number>;
+  }>;
+  paymentsExportWorkbook: (opts?: {
+    paymentIds?: string[];
+    mfPaymentIds?: string[];
+  }) => Promise<{
+    saved: boolean;
+    path?: string;
+    sheets?: Record<string, number>;
+  }>;
   attachments: {
     list: (policyId: string) => Promise<any[]>;
     add: (policyId: string) => Promise<{ added: number; errors: { fileName: string; reason: string }[] } | null>;

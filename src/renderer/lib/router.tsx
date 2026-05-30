@@ -14,6 +14,12 @@ export type Route =
   | { name: 'policies' }
   | { name: 'policy-new' }
   | { name: 'policy-detail'; id: string }
+  | { name: 'mutual-funds' }
+  | { name: 'mutual-fund-new' }
+  | { name: 'mutual-fund-detail'; id: string }
+  | { name: 'calendar' }
+  | { name: 'calendar-new' }
+  | { name: 'calendar-detail'; id: string }
   | { name: 'payments' }
   | { name: 'reminders' }
   | { name: 'valuation' }
@@ -28,6 +34,16 @@ const parse = (hash: string): Route => {
     if (parts[1] === 'new') return { name: 'policy-new' };
     if (parts[1]) return { name: 'policy-detail', id: parts[1] };
     return { name: 'policies' };
+  }
+  if (parts[0] === 'mutual-funds') {
+    if (parts[1] === 'new') return { name: 'mutual-fund-new' };
+    if (parts[1]) return { name: 'mutual-fund-detail', id: parts[1] };
+    return { name: 'mutual-funds' };
+  }
+  if (parts[0] === 'calendar') {
+    if (parts[1] === 'new') return { name: 'calendar-new' };
+    if (parts[1]) return { name: 'calendar-detail', id: parts[1] };
+    return { name: 'calendar' };
   }
   if (parts[0] === 'payments') return { name: 'payments' };
   if (parts[0] === 'reminders') return { name: 'reminders' };
