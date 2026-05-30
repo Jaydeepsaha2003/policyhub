@@ -65,7 +65,7 @@ type Repayment = {
   notes: string | null;
 };
 
-type PolicyLite = { id: string; policyNo: string; policyHolder: string };
+type PolicyLite = { id: string; policyNo: string; policyHolder: string; companyName: string };
 
 const statusBadge = (s: Repayment['status']) => {
   switch (s) {
@@ -96,6 +96,8 @@ export const RepaymentsPage = () => {
   const [policies, setPolicies] = useState<PolicyLite[]>([]);
   const [status, setStatus] = useState<string>('all');
   const [policyId, setPolicyId] = useState<string>('all');
+  const [companyFilter, setCompanyFilter] = useState<string>('all');
+  const [holderFilter, setHolderFilter] = useState<string>('all');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [downloading, setDownloading] = useState(false);
@@ -127,6 +129,7 @@ export const RepaymentsPage = () => {
           id: p.id,
           policyNo: p.policyNo,
           policyHolder: p.policyHolder,
+          companyName: p.companyName,
         })),
       );
     } catch (err) {
@@ -171,6 +174,56 @@ export const RepaymentsPage = () => {
 
   const policyMap = useMemo(() => new Map(policies.map((p) => [p.id, p])), [policies]);
 
+  // Company / holder dropdown values, narrowed by current company selection
+  // so picking "Acme" only shows Acme's holders.
+  const companies = useMemo(
+    () => Array.from(new Set(policies.map((p) => p.companyName))).sort(),
+    [policies],
+  );
+  const holders = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          policies
+            .filter((p) => companyFilter === 'all' || p.companyName === companyFilter)
+            .map((p) => p.policyHolder),
+        ),
+      ).sort(),
+    [policies, companyFilter],
+  );
+
+  // Apply client-side company/holder filters. Standalone repayments
+  // (policyId === null) are hidden when either company/holder is active.
+  const filtered = useMemo(
+    () =>
+      rows.filter((r) => {
+        if (companyFilter === 'all' && holderFilter === 'all') return true;
+        if (!r.policyId) return false;
+        const p = policyMap.get(r.policyId);
+        if (companyFilter !== 'all' && p?.companyName !== companyFilter) return false;
+        if (holderFilter !== 'all' && p?.policyHolder !== holderFilter) return false;
+        return true;
+      }),
+    [rows, policyMap, companyFilter, holderFilter],
+  );
+
+  const anyFilterActive =
+    status !== 'all' ||
+    policyId !== 'all' ||
+    companyFilter !== 'all' ||
+    holderFilter !== 'all' ||
+    Boolean(from) ||
+    Boolean(to);
+
+  const clearFilters = () => {
+    setStatus('all');
+    setPolicyId('all');
+    setCompanyFilter('all');
+    setHolderFilter('all');
+    setFrom('');
+    setTo('');
+  };
+
   return (
     <div className="space-y-4">
       <Card>
@@ -185,6 +238,28 @@ export const RepaymentsPage = () => {
               <SelectItem value="overdue">Overdue</SelectItem>
               <SelectItem value="received">Received</SelectItem>
               <SelectItem value="cancelled">Cancelled</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={companyFilter} onValueChange={(v) => { setCompanyFilter(v); setHolderFilter('all'); }}>
+            <SelectTrigger className="w-44">
+              <SelectValue placeholder="Company" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All companies</SelectItem>
+              {companies.map((c) => (
+                <SelectItem key={c} value={c}>{c}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={holderFilter} onValueChange={setHolderFilter}>
+            <SelectTrigger className="w-44">
+              <SelectValue placeholder="Holder" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All holders</SelectItem>
+              {holders.map((h) => (
+                <SelectItem key={h} value={h}>{h}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <Select value={policyId} onValueChange={setPolicyId}>
@@ -202,6 +277,11 @@ export const RepaymentsPage = () => {
           </Select>
           <DateInputDMY value={from} onChange={(iso) => setFrom(iso)} className="w-44" placeholder="From (DD-MM-YYYY)" />
           <DateInputDMY value={to} onChange={(iso) => setTo(iso)} className="w-44" placeholder="To (DD-MM-YYYY)" />
+          {anyFilterActive && (
+            <Button variant="ghost" size="sm" onClick={clearFilters}>
+              Clear filters
+            </Button>
+          )}
 
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <Button onClick={() => setAddOpen(true)}>
@@ -222,7 +302,7 @@ export const RepaymentsPage = () => {
 
       <Card>
         <CardContent className="p-0">
-          {rows.length === 0 ? (
+          {filtered.length === 0 ? (
             <TableEmpty>
               <div>No repayments match these filters.</div>
               <Button size="sm" onClick={() => setAddOpen(true)}>
@@ -247,7 +327,7 @@ export const RepaymentsPage = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.map((r) => (
+                {filtered.map((r) => (
                   <TableRow key={r.id}>
                     <TableCell>
                       {r.policyNo ? (

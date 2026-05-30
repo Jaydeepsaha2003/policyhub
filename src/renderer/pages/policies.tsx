@@ -25,6 +25,7 @@ type Policy = {
   companyName: string;
   planName: string;
   sumAssured: number;
+  premiumAmount: number;
   paymentMode: string;
   status: 'active' | 'active_ppt_over' | 'matured' | 'lapsed' | 'surrendered';
 };
@@ -267,8 +268,8 @@ export const PoliciesPage = () => {
                   <TableHead>Holder</TableHead>
                   <TableHead>Company</TableHead>
                   <TableHead>Plan</TableHead>
-                  <TableHead className="text-right">Sum assured</TableHead>
-                  <TableHead>Mode</TableHead>
+                  <TableHead className="text-right">Premium</TableHead>
+                  <TableHead>Frequency</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
@@ -284,7 +285,7 @@ export const PoliciesPage = () => {
                     <TableCell>{p.companyName}</TableCell>
                     <TableCell>{p.planName}</TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {formatCurrencyPaise(p.sumAssured)}
+                      {formatCurrencyPaise(p.premiumAmount)}
                     </TableCell>
                     <TableCell className="capitalize">
                       {p.paymentMode.replace('_', '-')}

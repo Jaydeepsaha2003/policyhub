@@ -87,6 +87,8 @@ type MonthRow = {
   companyName: string;
 };
 
+const MONTH_PAGE_SIZE = 10;
+
 export const DashboardPage = () => {
   const { navigate } = useRouter();
   const [period, setPeriod] = useState<Period>('monthly');
@@ -97,6 +99,7 @@ export const DashboardPage = () => {
   const [series, setSeries] = useState<SeriesPoint[]>([]);
   const [maturing, setMaturing] = useState<Maturing[]>([]);
   const [monthRows, setMonthRows] = useState<MonthRow[]>([]);
+  const [monthPage, setMonthPage] = useState(0);
   const [markPaymentId, setMarkPaymentId] = useState<string | null>(null);
   const [markDefault, setMarkDefault] = useState(0);
 
@@ -121,6 +124,17 @@ export const DashboardPage = () => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period, customFrom, customTo]);
+
+  // Reset month-table pagination when the underlying data changes.
+  useEffect(() => {
+    setMonthPage(0);
+  }, [monthRows]);
+
+  const monthTotalPages = Math.max(1, Math.ceil(monthRows.length / MONTH_PAGE_SIZE));
+  const monthPageRows = monthRows.slice(
+    monthPage * MONTH_PAGE_SIZE,
+    (monthPage + 1) * MONTH_PAGE_SIZE,
+  );
 
   const today = isoToday();
   const monthStatusBadge = (r: MonthRow) => {
@@ -241,38 +255,45 @@ export const DashboardPage = () => {
 
       <Card>
         <CardHeader>
-          <CardTitle>Current — outstanding & paid</CardTitle>
-          <CardDescription>
-            {(() => {
-              const monthStart = new Date();
-              monthStart.setDate(1);
-              const monthStartIso = monthStart.toISOString().slice(0, 10);
-              const previousOutstanding = monthRows.filter(
-                (r) => r.status !== 'paid' && r.dueDate < monthStartIso,
-              ).length;
-              const currentMonth = monthRows.filter(
-                (r) => r.dueDate >= monthStartIso || (r.status === 'paid' && (r.paidDate ?? '') >= monthStartIso),
-              ).length;
-              return (
-                <>
-                  Includes carry-forward outstandings from previous months plus
-                  this month's installments.{' '}
-                  {previousOutstanding > 0 && (
-                    <span className="font-medium text-destructive">
-                      {previousOutstanding} previous outstanding
-                      {previousOutstanding === 1 ? '' : 's'}
-                    </span>
-                  )}
-                  {previousOutstanding > 0 && currentMonth > 0 ? ' · ' : ''}
-                  {currentMonth > 0 && (
-                    <span>
-                      {currentMonth} this month
-                    </span>
-                  )}
-                </>
-              );
-            })()}
-          </CardDescription>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <CardTitle>Current — outstanding & paid</CardTitle>
+              <CardDescription>
+                {(() => {
+                  const monthStart = new Date();
+                  monthStart.setDate(1);
+                  const monthStartIso = monthStart.toISOString().slice(0, 10);
+                  const previousOutstanding = monthRows.filter(
+                    (r) => r.status !== 'paid' && r.dueDate < monthStartIso,
+                  ).length;
+                  const currentMonth = monthRows.filter(
+                    (r) =>
+                      r.dueDate >= monthStartIso ||
+                      (r.status === 'paid' && (r.paidDate ?? '') >= monthStartIso),
+                  ).length;
+                  return (
+                    <>
+                      Includes carry-forward outstandings from previous months plus
+                      this month's installments.{' '}
+                      {previousOutstanding > 0 && (
+                        <span className="font-medium text-destructive">
+                          {previousOutstanding} previous outstanding
+                          {previousOutstanding === 1 ? '' : 's'}
+                        </span>
+                      )}
+                      {previousOutstanding > 0 && currentMonth > 0 ? ' · ' : ''}
+                      {currentMonth > 0 && <span>{currentMonth} this month</span>}
+                    </>
+                  );
+                })()}
+              </CardDescription>
+            </div>
+            {monthRows.length > 0 && (
+              <Badge variant="secondary" className="shrink-0">
+                Total: {monthRows.length}
+              </Badge>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           {monthRows.length === 0 ? (
@@ -291,7 +312,7 @@ export const DashboardPage = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {monthRows.map((r) => {
+                {monthPageRows.map((r) => {
                   const isOverdue = r.status === 'overdue' || (r.status !== 'paid' && r.dueDate < today);
                   return (
                     <TableRow
@@ -331,6 +352,38 @@ export const DashboardPage = () => {
                 })}
               </TableBody>
             </Table>
+          )}
+          {monthRows.length > MONTH_PAGE_SIZE && (
+            <div className="flex items-center justify-between border-t px-4 py-2 text-xs text-muted-foreground">
+              <span>
+                Showing {monthPage * MONTH_PAGE_SIZE + 1}–
+                {Math.min((monthPage + 1) * MONTH_PAGE_SIZE, monthRows.length)} of{' '}
+                {monthRows.length}
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={monthPage === 0}
+                  onClick={() => setMonthPage((p) => Math.max(0, p - 1))}
+                >
+                  Previous
+                </Button>
+                <span className="tabular-nums">
+                  Page {monthPage + 1} / {monthTotalPages}
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={monthPage >= monthTotalPages - 1}
+                  onClick={() =>
+                    setMonthPage((p) => Math.min(monthTotalPages - 1, p + 1))
+                  }
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>

@@ -38,7 +38,7 @@ type Row = {
   lateFee: number;
 };
 
-type PolicyLite = { id: string; policyNo: string; policyHolder: string };
+type PolicyLite = { id: string; policyNo: string; policyHolder: string; companyName: string };
 
 const statusBadge = (s: Row['status']) =>
   s === 'paid' ? (
@@ -55,6 +55,8 @@ export const PaymentsPage = () => {
   const [policies, setPolicies] = useState<PolicyLite[]>([]);
   const [status, setStatus] = useState<string>('all');
   const [policyId, setPolicyId] = useState<string>('all');
+  const [companyFilter, setCompanyFilter] = useState<string>('all');
+  const [holderFilter, setHolderFilter] = useState<string>('all');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [markId, setMarkId] = useState<string | null>(null);
@@ -87,6 +89,7 @@ export const PaymentsPage = () => {
           id: r.id,
           policyNo: r.policyNo,
           policyHolder: r.policyHolder,
+          companyName: r.companyName,
         })),
       );
     } catch (err) {
@@ -100,6 +103,56 @@ export const PaymentsPage = () => {
   }, [status, policyId, from, to]);
 
   const policyMap = useMemo(() => new Map(policies.map((p) => [p.id, p])), [policies]);
+
+  // Values for the company / holder dropdowns, narrowed by what's currently
+  // selected so the user only sees meaningful options.
+  const companies = useMemo(
+    () => Array.from(new Set(policies.map((p) => p.companyName))).sort(),
+    [policies],
+  );
+  const holders = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          policies
+            .filter(
+              (p) => companyFilter === 'all' || p.companyName === companyFilter,
+            )
+            .map((p) => p.policyHolder),
+        ),
+      ).sort(),
+    [policies, companyFilter],
+  );
+
+  // Apply remaining client-side filters (company, holder) to the
+  // server-filtered set.
+  const filtered = useMemo(
+    () =>
+      rows.filter((r) => {
+        const p = policyMap.get(r.policyId);
+        if (companyFilter !== 'all' && p?.companyName !== companyFilter) return false;
+        if (holderFilter !== 'all' && p?.policyHolder !== holderFilter) return false;
+        return true;
+      }),
+    [rows, policyMap, companyFilter, holderFilter],
+  );
+
+  const anyFilterActive =
+    status !== 'all' ||
+    policyId !== 'all' ||
+    companyFilter !== 'all' ||
+    holderFilter !== 'all' ||
+    Boolean(from) ||
+    Boolean(to);
+
+  const clearFilters = () => {
+    setStatus('all');
+    setPolicyId('all');
+    setCompanyFilter('all');
+    setHolderFilter('all');
+    setFrom('');
+    setTo('');
+  };
 
   const downloadTemplate = async () => {
     setDownloading(true);
@@ -151,7 +204,7 @@ export const PaymentsPage = () => {
       'Receipt',
     ];
     const lines = [header.join(',')];
-    for (const r of rows) {
+    for (const r of filtered) {
       const p = policyMap.get(r.policyId);
       const cells = [
         p?.policyNo ?? '',
@@ -192,6 +245,30 @@ export const PaymentsPage = () => {
             </SelectContent>
           </Select>
 
+          <Select value={companyFilter} onValueChange={(v) => { setCompanyFilter(v); setHolderFilter('all'); }}>
+            <SelectTrigger className="w-44">
+              <SelectValue placeholder="Company" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All companies</SelectItem>
+              {companies.map((c) => (
+                <SelectItem key={c} value={c}>{c}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={holderFilter} onValueChange={setHolderFilter}>
+            <SelectTrigger className="w-44">
+              <SelectValue placeholder="Holder" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All holders</SelectItem>
+              {holders.map((h) => (
+                <SelectItem key={h} value={h}>{h}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           <Select value={policyId} onValueChange={setPolicyId}>
             <SelectTrigger className="w-64">
               <SelectValue placeholder="Policy" />
@@ -219,6 +296,12 @@ export const PaymentsPage = () => {
             placeholder="To (DD-MM-YYYY)"
           />
 
+          {anyFilterActive && (
+            <Button variant="ghost" size="sm" onClick={clearFilters}>
+              Clear filters
+            </Button>
+          )}
+
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <Button variant="outline" size="sm" onClick={downloadTemplate} disabled={downloading}>
               {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
@@ -238,7 +321,7 @@ export const PaymentsPage = () => {
 
       <Card>
         <CardContent className="p-0">
-          {rows.length === 0 ? (
+          {filtered.length === 0 ? (
             <TableEmpty>No payments match these filters.</TableEmpty>
           ) : (
             <Table>
@@ -259,7 +342,7 @@ export const PaymentsPage = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.map((r) => {
+                {filtered.map((r) => {
                   const p = policyMap.get(r.policyId);
                   return (
                     <TableRow
