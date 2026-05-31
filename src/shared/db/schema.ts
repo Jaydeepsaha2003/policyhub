@@ -210,12 +210,16 @@ export const mutualFunds = sqliteTable('mutual_funds', {
   agentContact: text('agent_contact'),
   provider: text('provider').notNull(),
   schemeName: text('scheme_name').notNull(),
-  type: text('type', { enum: ['lumpsum', 'monthly'] })
+  type: text('type', {
+    enum: ['lumpsum', 'monthly', 'quarterly', 'half_yearly', 'yearly'],
+  })
     .notNull()
     .default('lumpsum'),
-  amount: integer('amount').notNull(), // paise — per-installment for monthly, total for lumpsum
+  amount: integer('amount').notNull(), // paise — per-installment for SIPs, total for lumpsum
   startDate: text('start_date').notNull(),
-  // For monthly: number of SIP installments to generate. For lumpsum: 1.
+  // Internal book-keeping: how many installments to generate. For lumpsum
+  // it's always 1. For SIPs we default to a long horizon (10 years' worth)
+  // so the user doesn't have to think about a count.
   installmentCount: integer('installment_count').notNull().default(1),
   status: text('status', { enum: ['active', 'redeemed', 'closed'] })
     .notNull()

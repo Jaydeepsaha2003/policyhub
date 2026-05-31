@@ -27,6 +27,8 @@ import {
   List as ListIcon,
   CalendarDays,
   CheckCircle2,
+  FileSpreadsheet,
+  Loader2,
 } from 'lucide-react';
 import { useRouter } from '@/lib/router';
 import {
@@ -168,6 +170,10 @@ export const CalendarPage = () => {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
+  const [exporting, setExporting] = useState(false);
+
+  const anyEventFilterActive =
+    q.trim() !== '' || categoryFilter !== 'all' || statusFilter !== 'all';
 
   const load = async () => {
     try {
@@ -381,6 +387,37 @@ export const CalendarPage = () => {
             </SelectContent>
           </Select>
 
+          <Button
+            variant="outline"
+            disabled={exporting}
+            onClick={async () => {
+              setExporting(true);
+              try {
+                const opts = anyEventFilterActive
+                  ? { eventIds: filteredEvents.map((e) => e.id) }
+                  : undefined;
+                const res = await window.policyhub.calendar.exportExcel(opts);
+                if (res?.saved) {
+                  toast.success(`Exported ${res.rowCount ?? 0} event(s)`, {
+                    description: res.path,
+                  });
+                }
+              } catch (err) {
+                toast.error('Export failed', {
+                  description: (err as Error).message,
+                });
+              } finally {
+                setExporting(false);
+              }
+            }}
+          >
+            {exporting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FileSpreadsheet className="h-4 w-4" />
+            )}
+            Export to Excel
+          </Button>
           <Button onClick={() => navigate('/calendar/new')}>
             <Plus className="h-4 w-4" />
             New event
@@ -423,6 +460,14 @@ export const CalendarPage = () => {
         </CardContent>
       </Card>
 
+      {/* Quick stats — events in the visible month + next 7-day outlook. */}
+      <CalendarStats
+        year={year}
+        month={month}
+        events={events}
+        chips={chips}
+      />
+
       {view === 'calendar' ? (
         <CalendarGrid
           year={year}
@@ -436,6 +481,17 @@ export const CalendarPage = () => {
             setMonth(today.getMonth());
           }}
           onChipClick={(c) => navigate(c.navigateTo)}
+          onEmptyDayClick={(iso) => {
+            // The hash router doesn't carry query params, so stash the
+            // pre-fill date in sessionStorage and the form picks it up
+            // on mount.
+            try {
+              sessionStorage.setItem('calendar.newEventDate', iso);
+            } catch {
+              /* ignore */
+            }
+            navigate('/calendar/new');
+          }}
         />
       ) : (
         // List view — calendar events only, with their own actions.
@@ -532,6 +588,7 @@ const CalendarGrid = ({
   onNext,
   onToday,
   onChipClick,
+  onEmptyDayClick,
 }: {
   year: number;
   month: number;
@@ -541,6 +598,7 @@ const CalendarGrid = ({
   onNext: () => void;
   onToday: () => void;
   onChipClick: (c: Chip) => void;
+  onEmptyDayClick: (iso: string) => void;
 }) => {
   const first = new Date(year, month, 1);
   const startWeekday = first.getDay();
@@ -580,37 +638,60 @@ const CalendarGrid = ({
           </Button>
         </div>
 
-        <div className="grid grid-cols-7 text-xs font-medium text-muted-foreground">
-          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
-            <div key={d} className="px-2 py-1 text-center">
+        <div className="grid grid-cols-7 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d, i) => (
+            <div
+              key={d}
+              className={cn(
+                'px-2 py-2 text-center',
+                (i === 0 || i === 6) && 'text-rose-500/80',
+              )}
+            >
               {d}
             </div>
           ))}
         </div>
-        <div className="grid grid-cols-7 gap-px rounded-md border bg-border">
+        <div className="grid grid-cols-7 gap-px overflow-hidden rounded-md border bg-border">
           {days.map((d, i) => {
             const iso = d.toISOString().slice(0, 10);
             const inMonth = d.getMonth() === month;
             const isToday = iso === todayIso;
+            const isWeekend = d.getDay() === 0 || d.getDay() === 6;
             const cellChips = byDate.get(iso) ?? [];
+            const isEmpty = cellChips.length === 0;
             return (
               <div
                 key={i}
+                onClick={() => {
+                  if (isEmpty && inMonth) onEmptyDayClick(iso);
+                }}
                 className={cn(
-                  'min-h-24 bg-background p-1.5 text-xs',
-                  !inMonth && 'opacity-40',
+                  'group relative min-h-28 p-2 text-xs transition-colors',
+                  inMonth ? 'bg-background' : 'bg-muted/30 text-muted-foreground',
+                  isWeekend && inMonth && 'bg-muted/10',
+                  isEmpty && inMonth && 'cursor-pointer hover:bg-accent/40',
+                  isToday && 'ring-2 ring-primary ring-inset',
                 )}
+                title={
+                  isEmpty && inMonth ? 'Click to add an event on this day' : undefined
+                }
               >
                 <div
                   className={cn(
-                    'mb-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full text-[11px]',
+                    'mb-1.5 inline-flex h-6 min-w-6 items-center justify-center rounded-full text-[11px]',
                     isToday
-                      ? 'bg-primary px-1.5 font-semibold text-primary-foreground'
-                      : 'font-medium',
+                      ? 'bg-primary px-1.5 font-bold text-primary-foreground shadow-sm'
+                      : isWeekend && inMonth
+                        ? 'font-semibold text-rose-500/90'
+                        : 'font-semibold',
                   )}
                 >
                   {d.getDate()}
                 </div>
+                {/* Subtle "+" hint on empty in-month cells when hovered. */}
+                {isEmpty && inMonth && (
+                  <Plus className="absolute right-1.5 top-1.5 h-3.5 w-3.5 text-muted-foreground/0 transition-opacity group-hover:text-muted-foreground/60" />
+                )}
                 <div className="space-y-1">
                   {cellChips.slice(0, 4).map((c) => {
                     const amountStr =
@@ -690,5 +771,107 @@ const CalendarGrid = ({
         </div>
       </CardContent>
     </Card>
+  );
+};
+
+// ---------------- Calendar stats row ----------------
+
+const CalendarStats = ({
+  year,
+  month,
+  events,
+  chips,
+}: {
+  year: number;
+  month: number;
+  events: Event[];
+  chips: Chip[];
+}) => {
+  // First/last day of the displayed month.
+  const monthStart = new Date(year, month, 1);
+  const monthEnd = new Date(year, month + 1, 0);
+  const monthStartIso = monthStart.toISOString().slice(0, 10);
+  const monthEndIso = monthEnd.toISOString().slice(0, 10);
+
+  // Counts pulled from the *calendar events* domain only.
+  const monthEvents = events.filter(
+    (e) => e.eventDate >= monthStartIso && e.eventDate <= monthEndIso,
+  );
+  const pendingThisMonth = monthEvents.filter((e) => e.status === 'pending').length;
+  const completedThisMonth = monthEvents.filter(
+    (e) => e.status === 'completed',
+  ).length;
+
+  // "Upcoming in next 7 days" counts every visible chip (events,
+  // premiums, MF SIPs, repayments, maturity) so the user sees the
+  // total upcoming workload regardless of source.
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const in7 = new Date(today);
+  in7.setDate(today.getDate() + 7);
+  const todayIso = today.toISOString().slice(0, 10);
+  const in7Iso = in7.toISOString().slice(0, 10);
+  const upcoming7 = chips.filter(
+    (c) => !c.isDone && c.date >= todayIso && c.date <= in7Iso,
+  );
+  const overdueChips = chips.filter((c) => !c.isDone && c.date < todayIso);
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <StatTile
+        label="Events this month"
+        value={String(monthEvents.length)}
+        sub={`${pendingThisMonth} pending · ${completedThisMonth} done`}
+      />
+      <StatTile
+        label="Upcoming next 7 days"
+        value={String(upcoming7.length)}
+        sub="Across all sources"
+        tone="info"
+      />
+      <StatTile
+        label="Overdue"
+        value={String(overdueChips.length)}
+        sub={overdueChips.length === 0 ? 'Nothing past due' : 'Past due, not done'}
+        tone={overdueChips.length > 0 ? 'danger' : undefined}
+      />
+      <StatTile
+        label="Total on screen"
+        value={String(chips.length)}
+        sub={`${monthStart.toLocaleString('default', { month: 'short' })} ${year}`}
+      />
+    </div>
+  );
+};
+
+const StatTile = ({
+  label,
+  value,
+  sub,
+  tone,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+  tone?: 'info' | 'danger' | 'success';
+}) => {
+  const color =
+    tone === 'info'
+      ? 'text-sky-600 dark:text-sky-400'
+      : tone === 'danger'
+        ? 'text-destructive'
+        : tone === 'success'
+          ? 'text-emerald-600 dark:text-emerald-400'
+          : 'text-foreground';
+  return (
+    <div className="rounded-md border bg-card p-4">
+      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
+      <div className={cn('mt-1 text-2xl font-semibold tabular-nums', color)}>
+        {value}
+      </div>
+      <div className="mt-0.5 text-xs text-muted-foreground">{sub}</div>
+    </div>
   );
 };

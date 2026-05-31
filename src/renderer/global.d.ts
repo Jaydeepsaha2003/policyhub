@@ -130,6 +130,9 @@ type PolicyHubApi = {
     restore: (id: string) => Promise<void>;
     purge: (id: string) => Promise<void>;
     appsScript: () => Promise<string>;
+    exportExcel: (opts?: {
+      eventIds?: string[];
+    }) => Promise<{ saved: boolean; path?: string; rowCount?: number }>;
   };
   exportEverything: () => Promise<{
     saved: boolean;

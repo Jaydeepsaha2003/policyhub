@@ -131,6 +131,11 @@ const api = {
     restore: (id: string) => invoke(IPC.calendarRestore, id),
     purge: (id: string) => invoke(IPC.calendarPurge, id),
     appsScript: () => invoke<string>(IPC.calendarAppsScript),
+    exportExcel: (opts?: { eventIds?: string[] }) =>
+      invoke<{ saved: boolean; path?: string; rowCount?: number }>(
+        IPC.calendarExportExcel,
+        opts,
+      ),
   },
   exportEverything: () =>
     invoke<{ saved: boolean; path?: string; sheets?: Record<string, number> }>(

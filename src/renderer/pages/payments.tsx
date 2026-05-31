@@ -212,6 +212,43 @@ export const PaymentsPage = () => {
     setTo('');
   };
 
+  // Filter-aware summary tiles. Counts and totals across whatever the user
+  // is currently seeing (policy premiums + MF SIPs combined).
+  const summary = useMemo(() => {
+    let dueCount = 0;
+    let dueAmount = 0;
+    let overdueCount = 0;
+    let overdueAmount = 0;
+    let paidCount = 0;
+    let paidAmount = 0;
+    let expectedAmount = 0;
+    for (const r of filtered) {
+      expectedAmount += r.expectedAmount;
+      if (r.status === 'pending') {
+        dueCount += 1;
+        dueAmount += r.expectedAmount;
+      } else if (r.status === 'overdue') {
+        overdueCount += 1;
+        overdueAmount += r.expectedAmount;
+      } else if (r.status === 'paid') {
+        paidCount += 1;
+        paidAmount += r.paidAmount ?? r.expectedAmount;
+      }
+    }
+    return {
+      total: filtered.length,
+      expectedAmount,
+      dueCount,
+      dueAmount,
+      overdueCount,
+      overdueAmount,
+      paidCount,
+      paidAmount,
+      outstandingCount: dueCount + overdueCount,
+      outstandingAmount: dueAmount + overdueAmount,
+    };
+  }, [filtered]);
+
   const downloadTemplate = async () => {
     setDownloading(true);
     try {
@@ -401,6 +438,33 @@ export const PaymentsPage = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Filter-aware totals — combined policy premium + MF SIP installments. */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <SummaryTile
+          label="Total installments"
+          value={String(summary.total)}
+          sub={`Expected ${formatCurrencyPaise(summary.expectedAmount)}`}
+        />
+        <SummaryTile
+          label="Pending"
+          value={String(summary.dueCount)}
+          sub={formatCurrencyPaise(summary.dueAmount)}
+          tone="warning"
+        />
+        <SummaryTile
+          label="Overdue"
+          value={String(summary.overdueCount)}
+          sub={formatCurrencyPaise(summary.overdueAmount)}
+          tone="danger"
+        />
+        <SummaryTile
+          label="Paid"
+          value={String(summary.paidCount)}
+          sub={formatCurrencyPaise(summary.paidAmount)}
+          tone="success"
+        />
+      </div>
 
       <Card>
         <CardContent className="p-0">
@@ -665,3 +729,37 @@ const Summary = ({ label, value, color }: { label: string; value: number; color:
     <div className="text-xs text-muted-foreground">{label}</div>
   </div>
 );
+
+const SummaryTile = ({
+  label,
+  value,
+  sub,
+  tone,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+  tone?: 'warning' | 'danger' | 'success';
+}) => {
+  const valueColor =
+    tone === 'warning'
+      ? 'text-amber-600 dark:text-amber-400'
+      : tone === 'danger'
+        ? 'text-destructive'
+        : tone === 'success'
+          ? 'text-emerald-600 dark:text-emerald-400'
+          : 'text-foreground';
+  return (
+    <div className="rounded-md border bg-card p-4">
+      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
+      <div className={`mt-1 text-2xl font-semibold tabular-nums ${valueColor}`}>
+        {value}
+      </div>
+      <div className="mt-0.5 text-xs text-muted-foreground tabular-nums">
+        {sub}
+      </div>
+    </div>
+  );
+};

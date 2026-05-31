@@ -64,7 +64,20 @@ const empty = (): Form => ({
 
 export const CalendarFormPage = (props: Props) => {
   const { navigate } = useRouter();
-  const [form, setForm] = useState<Form>(empty());
+  const [form, setForm] = useState<Form>(() => {
+    if (props.mode !== 'create') return empty();
+    // Pick up a date pre-filled by clicking an empty cell on the calendar.
+    try {
+      const iso = sessionStorage.getItem('calendar.newEventDate');
+      if (iso) {
+        sessionStorage.removeItem('calendar.newEventDate');
+        return { ...empty(), eventDate: iso };
+      }
+    } catch {
+      /* ignore */
+    }
+    return empty();
+  });
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(props.mode === 'create');
 

@@ -84,6 +84,7 @@ export const IPC = {
   calendarRestore: 'calendar:restore',
   calendarPurge: 'calendar:purge',
   calendarAppsScript: 'calendar:appsScript',
+  calendarExportExcel: 'calendar:exportExcel',
 
   // Unified multi-sheet export
   exportEverything: 'export:everything',

@@ -58,10 +58,12 @@ export type MutualFundFormInput = {
   agentContact?: string;
   provider: string;
   schemeName: string;
-  type: 'lumpsum' | 'monthly';
+  type: 'lumpsum' | 'monthly' | 'quarterly' | 'half_yearly' | 'yearly';
   amount: number; // rupees from UI; converted to paise
   startDate: string;
-  installmentCount: number; // 1 for lumpsum, N for monthly
+  // Optional: when omitted, the repo defaults to a 10-year horizon for
+  // SIPs and 1 for lumpsum. The form doesn't ask for this anymore.
+  installmentCount?: number;
   status?: 'active' | 'redeemed' | 'closed';
   // Default debit bank account for this fund. All optional.
   debitBankName?: string;

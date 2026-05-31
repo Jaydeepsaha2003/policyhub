@@ -89,7 +89,7 @@ type MutualFund = {
   accountHolder: string;
   provider: string;
   schemeName: string;
-  type: 'lumpsum' | 'monthly';
+  type: 'lumpsum' | 'monthly' | 'quarterly' | 'half_yearly' | 'yearly';
   amount: number;            // paise
   startDate: string;
   installmentCount: number;
@@ -805,9 +805,15 @@ export const ValuationPage = () => {
                         />
                       </TableCell>
                       <TableCell className="text-xs">
-                        {f.type === 'monthly'
-                          ? `SIP × ${f.installmentCount}`
-                          : 'Lumpsum'}
+                        {f.type === 'lumpsum'
+                          ? 'Lumpsum'
+                          : f.type === 'monthly'
+                            ? 'Monthly SIP'
+                            : f.type === 'quarterly'
+                              ? 'Quarterly SIP'
+                              : f.type === 'half_yearly'
+                                ? 'Half-yearly SIP'
+                                : 'Yearly SIP'}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         {r ? formatCurrencyPaise(r.totalContributed) : '—'}

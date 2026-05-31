@@ -18,6 +18,8 @@ import { isoToday, paiseToRupees } from '@/lib/utils';
 
 type Props = { mode: 'create' } | { mode: 'edit'; id: string };
 
+type MfType = 'lumpsum' | 'monthly' | 'quarterly' | 'half_yearly' | 'yearly';
+
 type Form = {
   folioNo: string;
   accountHolder: string;
@@ -25,10 +27,9 @@ type Form = {
   agentContact: string;
   provider: string;
   schemeName: string;
-  type: 'lumpsum' | 'monthly';
+  type: MfType;
   amount: string;
   startDate: string;
-  installmentCount: string;
   status: 'active' | 'redeemed' | 'closed';
   debitBankName: string;
   debitAccountNo: string;
@@ -48,7 +49,6 @@ const empty = (): Form => ({
   type: 'lumpsum',
   amount: '',
   startDate: isoToday(),
-  installmentCount: '60',
   status: 'active',
   debitBankName: '',
   debitAccountNo: '',
@@ -84,7 +84,6 @@ export const MutualFundFormPage = (props: Props) => {
             type: r.type,
             amount: String(paiseToRupees(r.amount)),
             startDate: r.startDate,
-            installmentCount: String(r.installmentCount),
             status: r.status,
             debitBankName: r.debitBankName ?? '',
             debitAccountNo: r.debitAccountNo ?? '',
@@ -110,10 +109,6 @@ export const MutualFundFormPage = (props: Props) => {
     const amt = Number(form.amount);
     if (!Number.isFinite(amt) || amt <= 0)
       return toast.error('Amount must be greater than zero');
-    const count = Number(form.installmentCount);
-    if (form.type === 'monthly' && (!Number.isFinite(count) || count < 1 || count > 1000)) {
-      return toast.error('Installment count must be between 1 and 1000');
-    }
     setSaving(true);
     try {
       const payload = {
@@ -126,7 +121,7 @@ export const MutualFundFormPage = (props: Props) => {
         type: form.type,
         amount: amt,
         startDate: form.startDate,
-        installmentCount: form.type === 'lumpsum' ? 1 : Math.floor(count),
+        // No installmentCount — the repo defaults it from `type`.
         status: form.status,
         debitBankName: form.debitBankName.trim() || undefined,
         debitAccountNo: form.debitAccountNo.trim() || undefined,
@@ -184,24 +179,36 @@ export const MutualFundFormPage = (props: Props) => {
               placeholder="e.g. SBI Bluechip Direct Growth"
             />
           </Field>
-          <Field label="Type">
+          <Field label="Type / Frequency">
             <Select
               value={form.type}
-              onValueChange={(v) =>
-                setForm({ ...form, type: v as 'lumpsum' | 'monthly' })
-              }
+              onValueChange={(v) => setForm({ ...form, type: v as MfType })}
             >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="lumpsum">Lumpsum (one-time)</SelectItem>
-                <SelectItem value="monthly">Monthly (SIP)</SelectItem>
+                <SelectItem value="monthly">Monthly SIP</SelectItem>
+                <SelectItem value="quarterly">Quarterly SIP</SelectItem>
+                <SelectItem value="half_yearly">Half-yearly SIP</SelectItem>
+                <SelectItem value="yearly">Yearly SIP</SelectItem>
               </SelectContent>
             </Select>
+            {form.type !== 'lumpsum' && (
+              <p className="text-[11px] text-muted-foreground">
+                Installments are generated automatically for a 10-year horizon
+                from the start date. Mark the fund as Redeemed / Closed when
+                you stop investing.
+              </p>
+            )}
           </Field>
           <Field
-            label={form.type === 'monthly' ? 'SIP amount per month (₹)' : 'Investment amount (₹)'}
+            label={
+              form.type === 'lumpsum'
+                ? 'Investment amount (₹)'
+                : 'Per-installment amount (₹)'
+            }
             required
           >
             <Input
@@ -217,21 +224,6 @@ export const MutualFundFormPage = (props: Props) => {
               onChange={(iso) => setForm({ ...form, startDate: iso })}
             />
           </Field>
-          {form.type === 'monthly' && (
-            <Field label="Number of SIP installments">
-              <Input
-                type="number"
-                min={1}
-                value={form.installmentCount}
-                onChange={(e) =>
-                  setForm({ ...form, installmentCount: e.target.value })
-                }
-              />
-              <p className="text-[11px] text-muted-foreground">
-                Each row is a monthly contribution shown on the Payments tab.
-              </p>
-            </Field>
-          )}
           <Field label="Agent name">
             <Input
               value={form.agentName}

@@ -30,6 +30,27 @@ export const getMutualFund = (id: string) => {
   return db.select().from(mutualFunds).where(eq(mutualFunds.id, id)).get() ?? null;
 };
 
+// Default occurrence count when the form doesn't specify one — covers
+// roughly a 10-year SIP horizon for each frequency. Pending occurrence
+// rows past the user-relevant window are cheap, and the regenerate flow
+// rewrites them on edits.
+const defaultInstallmentCount = (
+  type: MutualFundFormInput['type'],
+): number => {
+  switch (type) {
+    case 'monthly':
+      return 120; // 10 years
+    case 'quarterly':
+      return 40;  // 10 years
+    case 'half_yearly':
+      return 20;  // 10 years
+    case 'yearly':
+      return 10;  // 10 years
+    case 'lumpsum':
+      return 1;
+  }
+};
+
 const normalize = (input: MutualFundFormInput) => ({
   folioNo: input.folioNo.trim(),
   accountHolder: input.accountHolder.trim(),
@@ -41,7 +62,9 @@ const normalize = (input: MutualFundFormInput) => ({
   amount: rupeesToPaise(input.amount),
   startDate: input.startDate,
   installmentCount:
-    input.type === 'lumpsum' ? 1 : Math.max(1, Math.floor(input.installmentCount)),
+    input.installmentCount && input.installmentCount > 0
+      ? Math.max(1, Math.floor(input.installmentCount))
+      : defaultInstallmentCount(input.type),
   status: input.status ?? 'active',
   debitBankName: input.debitBankName?.trim() || null,
   debitAccountNo: input.debitAccountNo?.trim() || null,
@@ -107,6 +130,23 @@ export const purgeMutualFund = (id: string) => {
   db.delete(mutualFunds).where(eq(mutualFunds.id, id)).run();
 };
 
+// Months between two consecutive installments for the given fund type.
+const stepMonthsForType = (type: string): number => {
+  switch (type) {
+    case 'monthly':
+      return 1;
+    case 'quarterly':
+      return 3;
+    case 'half_yearly':
+      return 6;
+    case 'yearly':
+      return 12;
+    case 'lumpsum':
+    default:
+      return 0;
+  }
+};
+
 // Build the installment schedule. Preserves any rows already marked paid
 // and rewrites the pending tail.
 export const regenerateMfInstallments = (mutualFundId: string) => {
@@ -115,11 +155,13 @@ export const regenerateMfInstallments = (mutualFundId: string) => {
   if (!mf) return;
 
   const count = mf.type === 'lumpsum' ? 1 : Math.max(1, mf.installmentCount);
+  const step = stepMonthsForType(mf.type);
   const start = parseISO(mf.startDate);
 
   const desired = Array.from({ length: count }, (_, i) => ({
     installmentNo: i + 1,
-    dueDate: format(addMonths(start, i), 'yyyy-MM-dd'),
+    // step=0 (lumpsum) collapses to the start date for the single row.
+    dueDate: format(addMonths(start, i * step), 'yyyy-MM-dd'),
   }));
 
   const existing = db

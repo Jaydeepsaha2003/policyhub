@@ -71,6 +71,7 @@ import {
   updateCalendarEvent,
 } from './repo/calendar-events';
 import { calendarAppsScriptSnippet } from './cloud-sync-calendar';
+import { exportCalendarEvents } from './bulk-calendar-export';
 import { exportValuation, type ValuationExportRow } from './valuation-export';
 import {
   forceCloudReminders,
@@ -319,6 +320,9 @@ export const registerIpc = () => {
   handleMutate(IPC.calendarRestore, (id: string) => restoreCalendarEvent(id));
   handleMutate(IPC.calendarPurge, (id: string) => purgeCalendarEvent(id));
   handle(IPC.calendarAppsScript, () => calendarAppsScriptSnippet());
+  handle(IPC.calendarExportExcel, (opts?: { eventIds?: string[] }) =>
+    exportCalendarEvents(opts),
+  );
 
   // Unified multi-sheet export
   handle(IPC.exportEverything, () => exportEverything());

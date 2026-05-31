@@ -36,7 +36,7 @@ type Fund = {
   agentContact: string | null;
   provider: string;
   schemeName: string;
-  type: 'lumpsum' | 'monthly';
+  type: 'lumpsum' | 'monthly' | 'quarterly' | 'half_yearly' | 'yearly';
   amount: number;
   startDate: string;
   installmentCount: number;
@@ -168,9 +168,15 @@ export const MutualFundDetailPage = ({ id }: { id: string }) => {
         <CardContent>
           <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
             <Detail label="Type">
-              {fund.type === 'monthly'
-                ? `Monthly SIP × ${fund.installmentCount}`
-                : 'Lumpsum'}
+              {fund.type === 'lumpsum'
+                ? 'Lumpsum'
+                : fund.type === 'monthly'
+                  ? 'Monthly SIP'
+                  : fund.type === 'quarterly'
+                    ? 'Quarterly SIP'
+                    : fund.type === 'half_yearly'
+                      ? 'Half-yearly SIP'
+                      : 'Yearly SIP'}
             </Detail>
             <Detail
               label={fund.type === 'monthly' ? 'SIP amount / month' : 'Investment amount'}

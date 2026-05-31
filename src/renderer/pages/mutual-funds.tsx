@@ -30,12 +30,27 @@ type MutualFund = {
   accountHolder: string;
   provider: string;
   schemeName: string;
-  type: 'lumpsum' | 'monthly';
+  type: 'lumpsum' | 'monthly' | 'quarterly' | 'half_yearly' | 'yearly';
   amount: number;
   startDate: string;
   installmentCount: number;
   status: 'active' | 'redeemed' | 'closed';
   agentName: string | null;
+};
+
+const typeLabel = (t: MutualFund['type']): string => {
+  switch (t) {
+    case 'lumpsum':
+      return 'Lumpsum';
+    case 'monthly':
+      return 'Monthly SIP';
+    case 'quarterly':
+      return 'Quarterly SIP';
+    case 'half_yearly':
+      return 'Half-yearly SIP';
+    case 'yearly':
+      return 'Yearly SIP';
+  }
 };
 
 const statusLabel = (s: MutualFund['status']) =>
@@ -163,7 +178,10 @@ export const MutualFundsPage = () => {
             <SelectContent>
               <SelectItem value="all">All types</SelectItem>
               <SelectItem value="lumpsum">Lumpsum</SelectItem>
-              <SelectItem value="monthly">Monthly</SelectItem>
+              <SelectItem value="monthly">Monthly SIP</SelectItem>
+              <SelectItem value="quarterly">Quarterly SIP</SelectItem>
+              <SelectItem value="half_yearly">Half-yearly SIP</SelectItem>
+              <SelectItem value="yearly">Yearly SIP</SelectItem>
             </SelectContent>
           </Select>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -249,11 +267,7 @@ export const MutualFundsPage = () => {
                     <TableCell>{mf.accountHolder}</TableCell>
                     <TableCell>{mf.provider}</TableCell>
                     <TableCell>{mf.schemeName}</TableCell>
-                    <TableCell className="capitalize">
-                      {mf.type === 'monthly'
-                        ? `Monthly × ${mf.installmentCount}`
-                        : 'Lumpsum'}
-                    </TableCell>
+                    <TableCell>{typeLabel(mf.type)}</TableCell>
                     <TableCell className="text-right tabular-nums">
                       {formatCurrencyPaise(mf.amount)}
                     </TableCell>
