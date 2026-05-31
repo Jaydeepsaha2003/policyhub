@@ -134,6 +134,15 @@ type PolicyHubApi = {
       eventIds?: string[];
     }) => Promise<{ saved: boolean; path?: string; rowCount?: number }>;
   };
+  calendarCategories: {
+    list: () => Promise<any[]>;
+    create: (input: { label: string; colorKey: string }) => Promise<any>;
+    update: (
+      id: string,
+      patch: { label?: string; colorKey?: string },
+    ) => Promise<any>;
+    remove: (id: string) => Promise<void>;
+  };
   exportEverything: () => Promise<{
     saved: boolean;
     path?: string;

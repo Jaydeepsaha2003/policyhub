@@ -263,6 +263,13 @@ const applySchema = (sqlite: Database.Database) => {
     CREATE INDEX IF NOT EXISTS idx_calendar_events_date ON calendar_events(event_date);
     CREATE INDEX IF NOT EXISTS idx_calendar_events_series ON calendar_events(series_id);
     CREATE INDEX IF NOT EXISTS idx_calendar_events_status ON calendar_events(status, event_date);
+
+    CREATE TABLE IF NOT EXISTS calendar_categories (
+      id TEXT PRIMARY KEY,
+      label TEXT NOT NULL UNIQUE,
+      color_key TEXT NOT NULL DEFAULT 'slate',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   // Idempotent ALTERs for upgrades from earlier schema versions.

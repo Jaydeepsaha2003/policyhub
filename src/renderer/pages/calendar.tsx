@@ -4,6 +4,15 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { ExternalLink, X as XIcon } from 'lucide-react';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -142,6 +151,31 @@ const SOURCE_LABEL: Record<ChipKind, string> = {
 
 const isoToday = () => new Date().toISOString().slice(0, 10);
 
+// Color keys map to Tailwind bg-*-500 classes. Mirrors COLOR_SWATCH in
+// the categories dialog. When an event has category='other', we look
+// up its customCategory label in this list to pick the chip color.
+const COLOR_KEY_TO_CLASS: Record<string, string> = {
+  slate: 'bg-slate-500',
+  red: 'bg-red-500',
+  orange: 'bg-orange-500',
+  amber: 'bg-amber-500',
+  yellow: 'bg-yellow-500',
+  lime: 'bg-lime-500',
+  green: 'bg-green-500',
+  emerald: 'bg-emerald-500',
+  teal: 'bg-teal-500',
+  cyan: 'bg-cyan-500',
+  sky: 'bg-sky-500',
+  blue: 'bg-blue-500',
+  indigo: 'bg-indigo-500',
+  violet: 'bg-violet-500',
+  fuchsia: 'bg-fuchsia-500',
+  pink: 'bg-pink-500',
+  rose: 'bg-rose-500',
+};
+
+type CustomCategoryRow = { id: string; label: string; colorKey: string };
+
 export const CalendarPage = () => {
   const { navigate } = useRouter();
   const [view, setView] = useState<'list' | 'calendar'>('calendar');
@@ -152,6 +186,7 @@ export const CalendarPage = () => {
   const [payments, setPayments] = useState<any[]>([]);
   const [mfPayments, setMfPayments] = useState<any[]>([]);
   const [repayments, setRepayments] = useState<any[]>([]);
+  const [customCategories, setCustomCategories] = useState<CustomCategoryRow[]>([]);
 
   // Calendar-event-only filters.
   const [q, setQ] = useState('');
@@ -171,24 +206,28 @@ export const CalendarPage = () => {
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [exporting, setExporting] = useState(false);
+  // Clicked chip → popup card. null when closed.
+  const [popupChip, setPopupChip] = useState<Chip | null>(null);
 
   const anyEventFilterActive =
     q.trim() !== '' || categoryFilter !== 'all' || statusFilter !== 'all';
 
   const load = async () => {
     try {
-      const [ev, pol, pay, mfp, rep] = await Promise.all([
+      const [ev, pol, pay, mfp, rep, cats] = await Promise.all([
         window.policyhub.calendar.list(),
         window.policyhub.policies.list(),
         window.policyhub.payments.listAll({}),
         window.policyhub.mfPayments.listAll({}),
         window.policyhub.repayments.list({}),
+        window.policyhub.calendarCategories.list(),
       ]);
       setEvents(ev as Event[]);
       setPolicies(pol as any[]);
       setPayments(pay as any[]);
       setMfPayments(mfp as any[]);
       setRepayments(rep as any[]);
+      setCustomCategories(cats as CustomCategoryRow[]);
     } catch (err) {
       toast.error('Failed to load calendar', { description: (err as Error).message });
     }
@@ -216,6 +255,26 @@ export const CalendarPage = () => {
   const chips = useMemo<Chip[]>(() => {
     const out: Chip[] = [];
 
+    // Look up the chip color for the given event. Built-ins use the
+    // hardcoded CATEGORY_DOT. For category='other', try to match the
+    // event's customCategory label against the user's saved custom
+    // categories so the chip shows the color the user picked.
+    const colorFor = (e: Event): string => {
+      if (e.category !== 'other') {
+        return CATEGORY_DOT[e.category] ?? 'bg-slate-500';
+      }
+      const label = (e.customCategory ?? '').trim().toLowerCase();
+      if (label) {
+        const match = customCategories.find(
+          (c) => c.label.toLowerCase() === label,
+        );
+        if (match) {
+          return COLOR_KEY_TO_CLASS[match.colorKey] ?? 'bg-slate-500';
+        }
+      }
+      return CATEGORY_DOT.other;
+    };
+
     if (sourcesOn.event) {
       for (const e of filteredEvents) {
         out.push({
@@ -225,7 +284,7 @@ export const CalendarPage = () => {
           title: e.title,
           subtitle: displayCategory(e),
           amount: e.amount,
-          dotClass: CATEGORY_DOT[e.category] ?? 'bg-slate-500',
+          dotClass: colorFor(e),
           navigateTo: `/calendar/${e.id}`,
           isDone: e.status !== 'pending',
         });
@@ -303,7 +362,15 @@ export const CalendarPage = () => {
     }
 
     return out;
-  }, [filteredEvents, policies, payments, mfPayments, repayments, sourcesOn]);
+  }, [
+    filteredEvents,
+    policies,
+    payments,
+    mfPayments,
+    repayments,
+    sourcesOn,
+    customCategories,
+  ]);
 
   const monthLabel = new Date(year, month, 1).toLocaleString('default', {
     month: 'long',
@@ -480,7 +547,7 @@ export const CalendarPage = () => {
             setYear(today.getFullYear());
             setMonth(today.getMonth());
           }}
-          onChipClick={(c) => navigate(c.navigateTo)}
+          onChipClick={(c) => setPopupChip(c)}
           onEmptyDayClick={(iso) => {
             // The hash router doesn't carry query params, so stash the
             // pre-fill date in sessionStorage and the form picks it up
@@ -573,6 +640,15 @@ export const CalendarPage = () => {
           </CardContent>
         </Card>
       )}
+
+      <ChipPopup
+        chip={popupChip}
+        onClose={() => setPopupChip(null)}
+        onOpen={(c) => {
+          setPopupChip(null);
+          navigate(c.navigateTo);
+        }}
+      />
     </div>
   );
 };
@@ -666,9 +742,8 @@ const CalendarGrid = ({
                   if (isEmpty && inMonth) onEmptyDayClick(iso);
                 }}
                 className={cn(
-                  'group relative min-h-28 p-2 text-xs transition-colors',
-                  inMonth ? 'bg-background' : 'bg-muted/30 text-muted-foreground',
-                  isWeekend && inMonth && 'bg-muted/10',
+                  'group relative min-h-28 bg-background p-2 text-xs transition-colors',
+                  !inMonth && 'text-muted-foreground/60',
                   isEmpty && inMonth && 'cursor-pointer hover:bg-accent/40',
                   isToday && 'ring-2 ring-primary ring-inset',
                 )}
@@ -694,48 +769,62 @@ const CalendarGrid = ({
                 )}
                 <div className="space-y-1">
                   {cellChips.slice(0, 4).map((c) => {
-                    const amountStr =
-                      c.amount !== null && c.amount > 0
-                        ? formatCurrencyCompactPaise(c.amount)
-                        : null;
+                    const hasAmount = c.amount !== null && c.amount > 0;
+                    const amountStr = hasAmount
+                      ? formatCurrencyCompactPaise(c.amount as number)
+                      : null;
+                    // Amount-first label. Fall back to a 1-word source label
+                    // when the chip has no money attached (e.g. an Audit event).
+                    const primary = hasAmount
+                      ? amountStr!
+                      : c.title.length > 16
+                        ? c.title.slice(0, 14) + '…'
+                        : c.title;
                     const tooltip = [
                       c.title,
                       c.subtitle,
-                      c.amount !== null && c.amount > 0
-                        ? formatCurrencyPaise(c.amount)
-                        : null,
+                      hasAmount ? formatCurrencyPaise(c.amount as number) : null,
                     ]
                       .filter(Boolean)
                       .join(' — ');
                     return (
                       <button
                         key={c.id}
-                        onClick={() => onChipClick(c)}
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          onChipClick(c);
+                        }}
                         className={cn(
-                          'flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-[11px] hover:opacity-80',
+                          'flex w-full items-center gap-1.5 rounded-md border bg-card px-1.5 py-1 text-left text-xs font-medium shadow-sm transition-all hover:-translate-y-px hover:shadow',
                           c.isDone && 'line-through opacity-60',
                         )}
                         title={tooltip}
                       >
                         <span
                           className={cn(
-                            'h-2 w-2 shrink-0 rounded-full',
+                            'h-2.5 w-2.5 shrink-0 rounded-full',
                             c.dotClass,
                           )}
                         />
-                        <span className="min-w-0 flex-1 truncate">{c.title}</span>
-                        {amountStr && (
-                          <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
-                            {amountStr}
-                          </span>
-                        )}
+                        <span className="min-w-0 flex-1 truncate tabular-nums">
+                          {primary}
+                        </span>
                       </button>
                     );
                   })}
                   {cellChips.length > 4 && (
-                    <div className="text-[10px] text-muted-foreground">
+                    <button
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        // Surface the first overflow chip's popup —
+                        // user can then close + click another. Keeps
+                        // the cell uncluttered without losing access.
+                        onChipClick(cellChips[4]);
+                      }}
+                      className="w-full rounded-md bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-muted"
+                    >
                       +{cellChips.length - 4} more
-                    </div>
+                    </button>
                   )}
                 </div>
               </div>
@@ -873,5 +962,94 @@ const StatTile = ({
       </div>
       <div className="mt-0.5 text-xs text-muted-foreground">{sub}</div>
     </div>
+  );
+};
+
+// ---------------- Chip popup card ----------------
+
+const KIND_LABEL: Record<ChipKind, string> = {
+  event: 'Calendar event',
+  premium: 'Policy premium',
+  maturity: 'Policy maturity',
+  mf_sip: 'Mutual fund SIP',
+  repayment: 'Repayment',
+};
+
+const KIND_OPEN_VERB: Record<ChipKind, string> = {
+  event: 'Open event',
+  premium: 'Open policy',
+  maturity: 'Open policy',
+  mf_sip: 'Open mutual fund',
+  repayment: 'Open repayments',
+};
+
+const ChipPopup = ({
+  chip,
+  onClose,
+  onOpen,
+}: {
+  chip: Chip | null;
+  onClose: () => void;
+  onOpen: (c: Chip) => void;
+}) => {
+  if (!chip) return null;
+  const hasAmount = chip.amount !== null && chip.amount > 0;
+  return (
+    <Dialog open={Boolean(chip)} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <div className="flex items-center gap-2">
+            <span
+              className={cn('h-3 w-3 rounded-full', chip.dotClass)}
+              aria-hidden
+            />
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {KIND_LABEL[chip.kind]}
+            </span>
+            {chip.isDone && (
+              <Badge variant="secondary" className="ml-auto">
+                Done
+              </Badge>
+            )}
+          </div>
+          <DialogTitle className="mt-1 text-2xl leading-tight">
+            {chip.title}
+          </DialogTitle>
+          {chip.subtitle && (
+            <DialogDescription>{chip.subtitle}</DialogDescription>
+          )}
+        </DialogHeader>
+
+        <div className="grid grid-cols-2 gap-4 py-2">
+          <div>
+            <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Date
+            </div>
+            <div className="mt-0.5 text-sm font-medium">
+              {formatDate(chip.date)}
+            </div>
+          </div>
+          <div>
+            <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Amount
+            </div>
+            <div className="mt-0.5 text-sm font-semibold tabular-nums">
+              {hasAmount ? formatCurrencyPaise(chip.amount as number) : '—'}
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="flex-row justify-end gap-2 sm:justify-end">
+          <Button variant="outline" size="sm" onClick={onClose}>
+            <XIcon className="h-3.5 w-3.5" />
+            Close
+          </Button>
+          <Button size="sm" onClick={() => onOpen(chip)}>
+            <ExternalLink className="h-3.5 w-3.5" />
+            {KIND_OPEN_VERB[chip.kind]}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 };

@@ -335,6 +335,28 @@ export const calendarEvents = sqliteTable('calendar_events', {
 
 export type CalendarEvent = typeof calendarEvents.$inferSelect;
 
+// User-defined Calendar categories. Built-ins (Credit card, Health
+// insurance, etc.) live in code with fixed colors. Anything in this
+// table is a custom preset: the user picks a label + color once and
+// it shows up in the form's category dropdown next to the built-ins.
+//
+// When a user picks a custom category, the event itself is saved with
+// `category='other'` and `customCategory=<label>` so existing storage
+// stays intact. The chip color on the calendar grid is looked up by
+// matching customCategory against this table's labels.
+export const calendarCategories = sqliteTable('calendar_categories', {
+  id: text('id').primaryKey(),
+  label: text('label').notNull().unique(),
+  // Color key matches the Tailwind color name (e.g. 'red', 'emerald').
+  // Restricted at the UI layer to a curated palette.
+  colorKey: text('color_key').notNull().default('slate'),
+  createdAt: text('created_at')
+    .notNull()
+    .default(sql`(CURRENT_TIMESTAMP)`),
+});
+
+export type CalendarCategory = typeof calendarCategories.$inferSelect;
+
 export const attachments = sqliteTable('attachments', {
   id: text('id').primaryKey(),
   policyId: text('policy_id')

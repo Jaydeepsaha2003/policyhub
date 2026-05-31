@@ -137,6 +137,14 @@ const api = {
         opts,
       ),
   },
+  calendarCategories: {
+    list: () => invoke<any[]>(IPC.calendarCategoriesList),
+    create: (input: { label: string; colorKey: string }) =>
+      invoke(IPC.calendarCategoriesCreate, input),
+    update: (id: string, patch: { label?: string; colorKey?: string }) =>
+      invoke(IPC.calendarCategoriesUpdate, id, patch),
+    remove: (id: string) => invoke(IPC.calendarCategoriesDelete, id),
+  },
   exportEverything: () =>
     invoke<{ saved: boolean; path?: string; sheets?: Record<string, number> }>(
       IPC.exportEverything,

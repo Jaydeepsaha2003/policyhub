@@ -15,7 +15,13 @@ import {
 import { DateInputDMY } from '@/components/ui/date-input-dmy';
 import { useRouter } from '@/lib/router';
 import { toast } from 'sonner';
-import { isoToday, paiseToRupees } from '@/lib/utils';
+import { cn, isoToday, paiseToRupees } from '@/lib/utils';
+import {
+  CalendarCategoriesDialog,
+  COLOR_SWATCH,
+  type CategoryColor,
+} from '@/components/calendar-categories-dialog';
+import { Settings2 } from 'lucide-react';
 
 type Props = { mode: 'create' } | { mode: 'edit'; id: string };
 
@@ -30,7 +36,7 @@ const CATEGORY_LABELS = {
   vehicle_puc: 'Vehicle PUC',
   vehicle_fitness: 'Vehicle fitness',
   license_renewal: 'License renewal',
-  other: 'Other (custom)',
+  other: 'Other (free text)',
 } as const;
 
 type Category = keyof typeof CATEGORY_LABELS;
@@ -62,8 +68,27 @@ const empty = (): Form => ({
   notes: '',
 });
 
+type Preset = { id: string; label: string; colorKey: CategoryColor };
+
 export const CalendarFormPage = (props: Props) => {
   const { navigate } = useRouter();
+  const [presets, setPresets] = useState<Preset[]>([]);
+  const [manageOpen, setManageOpen] = useState(false);
+
+  // When a user picks a saved preset from the dropdown, we encode the
+  // selection as `custom:<presetId>`. On save we resolve it back to
+  // category='other' + customCategory=<label> so existing storage stays.
+  const loadPresets = async () => {
+    try {
+      const list = (await window.policyhub.calendarCategories.list()) as Preset[];
+      setPresets(list);
+    } catch {
+      /* ignore — non-fatal */
+    }
+  };
+  useEffect(() => {
+    loadPresets();
+  }, []);
   const [form, setForm] = useState<Form>(() => {
     if (props.mode !== 'create') return empty();
     // Pick up a date pre-filled by clicking an empty cell on the calendar.
@@ -189,10 +214,57 @@ export const CalendarFormPage = (props: Props) => {
             />
           </div>
           <div className="space-y-1.5">
-            <Label>Category</Label>
+            <div className="flex items-center justify-between">
+              <Label>Category</Label>
+              <button
+                type="button"
+                onClick={() => setManageOpen(true)}
+                className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground hover:underline"
+              >
+                <Settings2 className="h-3 w-3" />
+                Manage
+              </button>
+            </div>
             <Select
-              value={form.category}
-              onValueChange={(v) => setForm({ ...form, category: v as Category })}
+              value={
+                // Surface the saved preset (if any) as the dropdown value
+                // so it visibly matches the user's choice across reloads.
+                form.category === 'other' &&
+                presets.find(
+                  (p) =>
+                    p.label.toLowerCase() ===
+                    form.customCategory.trim().toLowerCase(),
+                )
+                  ? `custom:${
+                      presets.find(
+                        (p) =>
+                          p.label.toLowerCase() ===
+                          form.customCategory.trim().toLowerCase(),
+                      )!.id
+                    }`
+                  : form.category
+              }
+              onValueChange={(v) => {
+                if (v.startsWith('custom:')) {
+                  const id = v.slice('custom:'.length);
+                  const preset = presets.find((p) => p.id === id);
+                  if (preset) {
+                    setForm({
+                      ...form,
+                      category: 'other',
+                      customCategory: preset.label,
+                    });
+                  }
+                } else if (v === 'other') {
+                  setForm({ ...form, category: 'other', customCategory: '' });
+                } else {
+                  setForm({
+                    ...form,
+                    category: v as Category,
+                    customCategory: '',
+                  });
+                }
+              }}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -203,23 +275,55 @@ export const CalendarFormPage = (props: Props) => {
                     {v}
                   </SelectItem>
                 ))}
+                {presets.length > 0 && (
+                  <div className="my-1 border-t" aria-hidden />
+                )}
+                {presets.map((p) => (
+                  <SelectItem key={p.id} value={`custom:${p.id}`}>
+                    <span className="inline-flex items-center gap-2">
+                      <span
+                        className={cn(
+                          'h-2.5 w-2.5 rounded-full',
+                          COLOR_SWATCH[p.colorKey] ?? COLOR_SWATCH.slate,
+                        )}
+                      />
+                      {p.label}
+                    </span>
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
-          {form.category === 'other' && (
-            <div className="space-y-1.5">
-              <Label>
-                Custom label <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                value={form.customCategory}
-                onChange={(e) =>
-                  setForm({ ...form, customCategory: e.target.value })
-                }
-                placeholder="e.g. Wifi renewal, Domain renewal"
-              />
-            </div>
-          )}
+          {form.category === 'other' &&
+            !presets.find(
+              (p) =>
+                p.label.toLowerCase() ===
+                form.customCategory.trim().toLowerCase(),
+            ) && (
+              <div className="space-y-1.5">
+                <Label>
+                  Custom label <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  value={form.customCategory}
+                  onChange={(e) =>
+                    setForm({ ...form, customCategory: e.target.value })
+                  }
+                  placeholder="e.g. Wifi renewal, Domain renewal"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Want this to be reusable with a color? Click{' '}
+                  <button
+                    type="button"
+                    className="underline-offset-2 hover:underline"
+                    onClick={() => setManageOpen(true)}
+                  >
+                    Manage
+                  </button>{' '}
+                  above and add it as a category.
+                </p>
+              </div>
+            )}
           <div className="space-y-1.5">
             <Label>
               {form.isRecurring ? 'First occurrence date' : 'Event date'}{' '}
@@ -328,6 +432,12 @@ export const CalendarFormPage = (props: Props) => {
           </Button>
         </div>
       </CardContent>
+
+      <CalendarCategoriesDialog
+        open={manageOpen}
+        onOpenChange={setManageOpen}
+        onChanged={loadPresets}
+      />
     </Card>
   );
 };

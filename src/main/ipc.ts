@@ -72,6 +72,12 @@ import {
 } from './repo/calendar-events';
 import { calendarAppsScriptSnippet } from './cloud-sync-calendar';
 import { exportCalendarEvents } from './bulk-calendar-export';
+import {
+  createCalendarCategory,
+  deleteCalendarCategory,
+  listCalendarCategories,
+  updateCalendarCategory,
+} from './repo/calendar-categories';
 import { exportValuation, type ValuationExportRow } from './valuation-export';
 import {
   forceCloudReminders,
@@ -322,6 +328,18 @@ export const registerIpc = () => {
   handle(IPC.calendarAppsScript, () => calendarAppsScriptSnippet());
   handle(IPC.calendarExportExcel, (opts?: { eventIds?: string[] }) =>
     exportCalendarEvents(opts),
+  );
+  handle(IPC.calendarCategoriesList, () => listCalendarCategories());
+  handleMutate(IPC.calendarCategoriesCreate, (input: any) => {
+    const id = createCalendarCategory(input);
+    return listCalendarCategories().find((c) => c.id === id) ?? null;
+  });
+  handleMutate(IPC.calendarCategoriesUpdate, (id: string, patch: any) => {
+    updateCalendarCategory(id, patch);
+    return listCalendarCategories().find((c) => c.id === id) ?? null;
+  });
+  handleMutate(IPC.calendarCategoriesDelete, (id: string) =>
+    deleteCalendarCategory(id),
   );
 
   // Unified multi-sheet export
