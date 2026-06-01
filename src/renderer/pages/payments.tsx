@@ -214,13 +214,23 @@ export const PaymentsPage = () => {
 
   // Filter-aware summary tiles. Counts and totals across whatever the user
   // is currently seeing (policy premiums + MF SIPs combined).
+  //
+  // Money definitions:
+  //   • paidPremium — sum of `paidAmount` (the premium portion only)
+  //   • paidGst     — sum of `penaltyAmount` (GST). Only policy rows have this.
+  //   • paidLateFee — sum of `lateFee`. Only policy rows have this.
+  //   • paidTotal   — premium + GST + late fee = the full money paid.
+  // MF SIP installments don't carry GST/late fee, so those contribute
+  // only to paidPremium.
   const summary = useMemo(() => {
     let dueCount = 0;
     let dueAmount = 0;
     let overdueCount = 0;
     let overdueAmount = 0;
     let paidCount = 0;
-    let paidAmount = 0;
+    let paidPremium = 0;
+    let paidGst = 0;
+    let paidLateFee = 0;
     let expectedAmount = 0;
     for (const r of filtered) {
       expectedAmount += r.expectedAmount;
@@ -232,7 +242,11 @@ export const PaymentsPage = () => {
         overdueAmount += r.expectedAmount;
       } else if (r.status === 'paid') {
         paidCount += 1;
-        paidAmount += r.paidAmount ?? r.expectedAmount;
+        paidPremium += r.paidAmount ?? r.expectedAmount;
+        if (r.kind === 'policy') {
+          paidGst += r.penaltyAmount ?? 0;
+          paidLateFee += r.lateFee ?? 0;
+        }
       }
     }
     return {
@@ -243,7 +257,11 @@ export const PaymentsPage = () => {
       overdueCount,
       overdueAmount,
       paidCount,
-      paidAmount,
+      paidPremium,
+      paidGst,
+      paidLateFee,
+      paidTotal: paidPremium + paidGst + paidLateFee,
+      paidFees: paidGst + paidLateFee,
       outstandingCount: dueCount + overdueCount,
       outstandingAmount: dueAmount + overdueAmount,
     };
@@ -440,7 +458,7 @@ export const PaymentsPage = () => {
       </Card>
 
       {/* Filter-aware totals — combined policy premium + MF SIP installments. */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <SummaryTile
           label="Total installments"
           value={String(summary.total)}
@@ -459,10 +477,23 @@ export const PaymentsPage = () => {
           tone="danger"
         />
         <SummaryTile
-          label="Paid"
-          value={String(summary.paidCount)}
-          sub={formatCurrencyPaise(summary.paidAmount)}
+          label="Paid (premium + fees)"
+          value={formatCurrencyPaise(summary.paidTotal)}
+          sub={
+            summary.paidFees > 0
+              ? `Premium ${formatCurrencyPaise(summary.paidPremium)} · ${summary.paidCount} installment(s)`
+              : `${summary.paidCount} installment(s)`
+          }
           tone="success"
+        />
+        <SummaryTile
+          label="GST + Late fee"
+          value={formatCurrencyPaise(summary.paidFees)}
+          sub={
+            summary.paidFees > 0
+              ? `GST ${formatCurrencyPaise(summary.paidGst)} · Late ${formatCurrencyPaise(summary.paidLateFee)}`
+              : 'No fees collected'
+          }
         />
       </div>
 

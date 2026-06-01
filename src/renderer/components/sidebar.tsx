@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { LayoutDashboard, FileText, IndianRupee, BellRing, Settings, ShieldCheck, Calculator, Banknote, LineChart, CalendarDays } from 'lucide-react';
 import { useRouter, type Route } from '@/lib/router';
 import { cn } from '@/lib/utils';
@@ -31,8 +32,54 @@ const matches = (active: Route, key: Route['name']): boolean => {
   return false;
 };
 
+// Small live counts for the Policies / Mutual funds nav badges.
+// Refreshes on mount and whenever the window regains focus, so adding
+// or deleting an item elsewhere is reflected without a full reload.
+const useNavCounts = () => {
+  const [policies, setPolicies] = useState<number | null>(null);
+  const [funds, setFunds] = useState<number | null>(null);
+
+  const refresh = async () => {
+    try {
+      const [p, f] = await Promise.all([
+        window.policyhub.policies.list(),
+        window.policyhub.mutualFunds.list(),
+      ]);
+      setPolicies(Array.isArray(p) ? p.length : 0);
+      setFunds(Array.isArray(f) ? f.length : 0);
+    } catch {
+      /* ignore — non-fatal, just don't show counts */
+    }
+  };
+
+  useEffect(() => {
+    refresh();
+    const onFocus = () => refresh();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, []);
+
+  return {
+    policies,
+    funds,
+    refresh,
+  };
+};
+
 export const Sidebar = ({ collapsed }: { collapsed: boolean }) => {
   const { route, navigate } = useRouter();
+  const counts = useNavCounts();
+  // Re-fetch counts whenever the user changes route — covers the case
+  // where they add a policy in the form page and come back.
+  useEffect(() => {
+    counts.refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route.name]);
+  const countFor = (key: Route['name']): number | null => {
+    if (key === 'policies') return counts.policies;
+    if (key === 'mutual-funds') return counts.funds;
+    return null;
+  };
   return (
     <aside
       className={cn(
@@ -60,11 +107,18 @@ export const Sidebar = ({ collapsed }: { collapsed: boolean }) => {
         {nav.map((item) => {
           const Icon = item.icon;
           const active = matches(route, item.key);
+          const count = countFor(item.key);
           return (
             <button
               key={item.key}
               onClick={() => navigate(item.path)}
-              title={collapsed ? item.label : undefined}
+              title={
+                collapsed
+                  ? count !== null
+                    ? `${item.label} (${count})`
+                    : item.label
+                  : undefined
+              }
               aria-label={item.label}
               className={cn(
                 'flex items-center rounded-md text-sm font-medium transition-colors',
@@ -75,7 +129,23 @@ export const Sidebar = ({ collapsed }: { collapsed: boolean }) => {
               )}
             >
               <Icon className="h-4 w-4 shrink-0" />
-              {!collapsed && <span>{item.label}</span>}
+              {!collapsed && (
+                <>
+                  <span className="flex-1 text-left">{item.label}</span>
+                  {count !== null && (
+                    <span
+                      className={cn(
+                        'shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums',
+                        active
+                          ? 'bg-primary/20 text-primary'
+                          : 'bg-muted text-muted-foreground',
+                      )}
+                    >
+                      {count}
+                    </span>
+                  )}
+                </>
+              )}
             </button>
           );
         })}
