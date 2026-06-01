@@ -149,7 +149,18 @@ const SOURCE_LABEL: Record<ChipKind, string> = {
   repayment: 'Repayments',
 };
 
-const isoToday = () => new Date().toISOString().slice(0, 10);
+// Local-time YYYY-MM-DD. We cannot use `Date.toISOString().slice(0,10)`
+// because it converts to UTC first — in IST (UTC+5:30) the date shifts
+// to the previous day for any local-midnight Date object, so an event
+// saved as "01" would render under the cell labelled "31".
+const toLocalIso = (d: Date): string => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+};
+
+const isoToday = () => toLocalIso(new Date());
 
 // Color keys map to Tailwind bg-*-500 classes. Mirrors COLOR_SWATCH in
 // the categories dialog. When an event has category='other', we look
@@ -643,7 +654,18 @@ export const CalendarPage = () => {
 
       <ChipPopup
         chip={popupChip}
+        // For "Also on this day": every chip sharing the popup chip's
+        // date (excluding itself). Lets the user step through a busy
+        // day from one popup.
+        siblings={
+          popupChip
+            ? chips.filter(
+                (c) => c.date === popupChip.date && c.id !== popupChip.id,
+              )
+            : []
+        }
         onClose={() => setPopupChip(null)}
+        onPickSibling={(c) => setPopupChip(c)}
         onOpen={(c) => {
           setPopupChip(null);
           navigate(c.navigateTo);
@@ -729,7 +751,7 @@ const CalendarGrid = ({
         </div>
         <div className="grid grid-cols-7 gap-px overflow-hidden rounded-md border bg-border">
           {days.map((d, i) => {
-            const iso = d.toISOString().slice(0, 10);
+            const iso = toLocalIso(d);
             const inMonth = d.getMonth() === month;
             const isToday = iso === todayIso;
             const isWeekend = d.getDay() === 0 || d.getDay() === 6;
@@ -767,66 +789,89 @@ const CalendarGrid = ({
                 {isEmpty && inMonth && (
                   <Plus className="absolute right-1.5 top-1.5 h-3.5 w-3.5 text-muted-foreground/0 transition-opacity group-hover:text-muted-foreground/60" />
                 )}
-                <div className="space-y-1">
-                  {cellChips.slice(0, 4).map((c) => {
-                    const hasAmount = c.amount !== null && c.amount > 0;
-                    const amountStr = hasAmount
-                      ? formatCurrencyCompactPaise(c.amount as number)
-                      : null;
-                    // Amount-first label. Fall back to a 1-word source label
-                    // when the chip has no money attached (e.g. an Audit event).
-                    const primary = hasAmount
-                      ? amountStr!
-                      : c.title.length > 16
-                        ? c.title.slice(0, 14) + '…'
-                        : c.title;
-                    const tooltip = [
-                      c.title,
-                      c.subtitle,
-                      hasAmount ? formatCurrencyPaise(c.amount as number) : null,
-                    ]
-                      .filter(Boolean)
-                      .join(' — ');
-                    return (
-                      <button
-                        key={c.id}
-                        onClick={(ev) => {
-                          ev.stopPropagation();
-                          onChipClick(c);
-                        }}
-                        className={cn(
-                          'flex w-full items-center gap-1.5 rounded-md border bg-card px-1.5 py-1 text-left text-xs font-medium shadow-sm transition-all hover:-translate-y-px hover:shadow',
-                          c.isDone && 'line-through opacity-60',
-                        )}
-                        title={tooltip}
-                      >
-                        <span
+                {/* 1–2 chips → full card-style display. */}
+                {/* 3+ chips → condensed dots + count to keep the cell tidy. */}
+                {cellChips.length <= 2 ? (
+                  <div className="space-y-1">
+                    {cellChips.map((c) => {
+                      const hasAmount = c.amount !== null && c.amount > 0;
+                      const amountStr = hasAmount
+                        ? formatCurrencyCompactPaise(c.amount as number)
+                        : null;
+                      const primary = hasAmount
+                        ? amountStr!
+                        : c.title.length > 16
+                          ? c.title.slice(0, 14) + '…'
+                          : c.title;
+                      const tooltip = [
+                        c.title,
+                        c.subtitle,
+                        hasAmount
+                          ? formatCurrencyPaise(c.amount as number)
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' — ');
+                      return (
+                        <button
+                          key={c.id}
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            onChipClick(c);
+                          }}
                           className={cn(
-                            'h-2.5 w-2.5 shrink-0 rounded-full',
-                            c.dotClass,
+                            'flex w-full items-center gap-1.5 rounded-md border bg-card px-1.5 py-1 text-left text-xs font-medium shadow-sm transition-all hover:-translate-y-px hover:shadow',
+                            c.isDone && 'line-through opacity-60',
                           )}
-                        />
-                        <span className="min-w-0 flex-1 truncate tabular-nums">
-                          {primary}
-                        </span>
-                      </button>
-                    );
-                  })}
-                  {cellChips.length > 4 && (
-                    <button
-                      onClick={(ev) => {
-                        ev.stopPropagation();
-                        // Surface the first overflow chip's popup —
-                        // user can then close + click another. Keeps
-                        // the cell uncluttered without losing access.
-                        onChipClick(cellChips[4]);
-                      }}
-                      className="w-full rounded-md bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-muted"
-                    >
-                      +{cellChips.length - 4} more
-                    </button>
-                  )}
-                </div>
+                          title={tooltip}
+                        >
+                          <span
+                            className={cn(
+                              'h-2.5 w-2.5 shrink-0 rounded-full',
+                              c.dotClass,
+                            )}
+                          />
+                          <span className="min-w-0 flex-1 truncate tabular-nums">
+                            {primary}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  // Condensed view: bigger dots in a row + count badge.
+                  // Click anywhere on the strip to open the first chip's
+                  // popup (the popup lists all chips on this day).
+                  <button
+                    onClick={(ev) => {
+                      ev.stopPropagation();
+                      onChipClick(cellChips[0]);
+                    }}
+                    className={cn(
+                      'flex w-full flex-wrap items-center gap-1 rounded-md border bg-card px-1.5 py-1.5 text-xs shadow-sm transition-all hover:-translate-y-px hover:shadow',
+                    )}
+                    title={`${cellChips.length} events — click to view`}
+                  >
+                    {cellChips.slice(0, 6).map((c) => (
+                      <span
+                        key={c.id}
+                        className={cn(
+                          'h-3 w-3 shrink-0 rounded-full',
+                          c.dotClass,
+                          c.isDone && 'opacity-50',
+                        )}
+                      />
+                    ))}
+                    {cellChips.length > 6 && (
+                      <span className="text-[10px] text-muted-foreground">
+                        +{cellChips.length - 6}
+                      </span>
+                    )}
+                    <span className="ml-auto rounded bg-muted/70 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums">
+                      {cellChips.length}
+                    </span>
+                  </button>
+                )}
               </div>
             );
           })}
@@ -879,8 +924,8 @@ const CalendarStats = ({
   // First/last day of the displayed month.
   const monthStart = new Date(year, month, 1);
   const monthEnd = new Date(year, month + 1, 0);
-  const monthStartIso = monthStart.toISOString().slice(0, 10);
-  const monthEndIso = monthEnd.toISOString().slice(0, 10);
+  const monthStartIso = toLocalIso(monthStart);
+  const monthEndIso = toLocalIso(monthEnd);
 
   // Counts pulled from the *calendar events* domain only.
   const monthEvents = events.filter(
@@ -898,8 +943,8 @@ const CalendarStats = ({
   today.setHours(0, 0, 0, 0);
   const in7 = new Date(today);
   in7.setDate(today.getDate() + 7);
-  const todayIso = today.toISOString().slice(0, 10);
-  const in7Iso = in7.toISOString().slice(0, 10);
+  const todayIso = toLocalIso(today);
+  const in7Iso = toLocalIso(in7);
   const upcoming7 = chips.filter(
     (c) => !c.isDone && c.date >= todayIso && c.date <= in7Iso,
   );
@@ -985,12 +1030,16 @@ const KIND_OPEN_VERB: Record<ChipKind, string> = {
 
 const ChipPopup = ({
   chip,
+  siblings,
   onClose,
   onOpen,
+  onPickSibling,
 }: {
   chip: Chip | null;
+  siblings: Chip[];
   onClose: () => void;
   onOpen: (c: Chip) => void;
+  onPickSibling: (c: Chip) => void;
 }) => {
   if (!chip) return null;
   const hasAmount = chip.amount !== null && chip.amount > 0;
@@ -1038,6 +1087,47 @@ const ChipPopup = ({
             </div>
           </div>
         </div>
+
+        {/* "Also on this day" — every other chip sharing the same date. */}
+        {siblings.length > 0 && (
+          <div className="border-t pt-3">
+            <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Also on this day ({siblings.length})
+            </div>
+            <ul className="max-h-44 space-y-1 overflow-y-auto">
+              {siblings.map((s) => {
+                const sAmt =
+                  s.amount !== null && s.amount > 0
+                    ? formatCurrencyPaise(s.amount)
+                    : null;
+                return (
+                  <li key={s.id}>
+                    <button
+                      onClick={() => onPickSibling(s)}
+                      className={cn(
+                        'flex w-full items-center gap-2 rounded-md border bg-card px-2 py-1.5 text-left text-sm hover:bg-accent/50',
+                        s.isDone && 'line-through opacity-60',
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'h-2.5 w-2.5 shrink-0 rounded-full',
+                          s.dotClass,
+                        )}
+                      />
+                      <span className="min-w-0 flex-1 truncate">{s.title}</span>
+                      {sAmt && (
+                        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                          {sAmt}
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
 
         <DialogFooter className="flex-row justify-end gap-2 sm:justify-end">
           <Button variant="outline" size="sm" onClick={onClose}>
