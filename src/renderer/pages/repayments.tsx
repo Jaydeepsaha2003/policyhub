@@ -142,6 +142,15 @@ export const RepaymentsPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, policyId, from, to]);
 
+  // Auto-refresh on window focus so the tab reflects schedule changes
+  // made elsewhere (policy edit regenerates maturity repayments).
+  useEffect(() => {
+    const onFocus = () => load();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, policyId, from, to]);
+
   const downloadTemplate = async () => {
     setDownloading(true);
     try {

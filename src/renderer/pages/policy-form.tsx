@@ -54,6 +54,78 @@ type Props = {
   onSaved?: (id: string) => void;
 };
 
+// Fields that, when changed, regenerate the policy's pending payment
+// installments and/or auto-generated maturity repayments. Surfaced in
+// the confirmation dialog so the user sees what's about to change.
+const describeScheduleDiffs = (
+  before: PolicyFormValues,
+  after: PolicyFormValues,
+): { label: string; before: string; after: string }[] => {
+  const fmt = (v: unknown): string =>
+    v === null || v === undefined || v === '' ? '—' : String(v);
+  const out: { label: string; before: string; after: string }[] = [];
+  if (Number(before.premiumAmount) !== Number(after.premiumAmount)) {
+    out.push({
+      label: 'Premium amount',
+      before: `₹${fmt(before.premiumAmount)}`,
+      after: `₹${fmt(after.premiumAmount)}`,
+    });
+  }
+  if (before.paymentMode !== after.paymentMode) {
+    out.push({
+      label: 'Payment mode',
+      before: fmt(before.paymentMode),
+      after: fmt(after.paymentMode),
+    });
+  }
+  if (
+    Number(before.premiumPaymentTermMonths) !==
+    Number(after.premiumPaymentTermMonths)
+  ) {
+    out.push({
+      label: 'Premium payment term (months)',
+      before: fmt(before.premiumPaymentTermMonths),
+      after: fmt(after.premiumPaymentTermMonths),
+    });
+  }
+  if (before.commencementDate !== after.commencementDate) {
+    out.push({
+      label: 'Commencement date',
+      before: fmt(before.commencementDate),
+      after: fmt(after.commencementDate),
+    });
+  }
+  if (before.maturityDate !== after.maturityDate) {
+    out.push({
+      label: 'Maturity date',
+      before: fmt(before.maturityDate),
+      after: fmt(after.maturityDate),
+    });
+  }
+  if (before.maturityType !== after.maturityType) {
+    out.push({
+      label: 'Maturity type',
+      before: fmt(before.maturityType),
+      after: fmt(after.maturityType),
+    });
+  }
+  if ((before.maturityFrequency ?? null) !== (after.maturityFrequency ?? null)) {
+    out.push({
+      label: 'Maturity frequency',
+      before: fmt(before.maturityFrequency),
+      after: fmt(after.maturityFrequency),
+    });
+  }
+  if (Number(before.sumAssured) !== Number(after.sumAssured)) {
+    out.push({
+      label: 'Sum assured',
+      before: `₹${fmt(before.sumAssured)}`,
+      after: `₹${fmt(after.sumAssured)}`,
+    });
+  }
+  return out;
+};
+
 const defaults: PolicyFormValues = {
   policyNo: '',
   policyHolder: '',
@@ -153,6 +225,13 @@ export const PolicyFormPage = ({ mode, initial, onSaved }: Props) => {
   const [stepIndex, setStepIndex] = useState(0);
   const [stagedFiles, setStagedFiles] = useState<StagedFile[]>([]);
   const [sumAssuredWarning, setSumAssuredWarning] = useState<PolicyFormValues | null>(null);
+  // Holds the pending edit when one of the schedule-affecting fields
+  // changed (premium amount, payment term, etc.). Saving will regenerate
+  // pending installments and maturity repayments, so we confirm first.
+  const [scheduleChangeConfirm, setScheduleChangeConfirm] = useState<{
+    values: PolicyFormValues;
+    diffs: { label: string; before: string; after: string }[];
+  } | null>(null);
   // Track whether the user has manually edited Sum Assured. While untouched in
   // create mode we keep SA mirrored to 10× yearly premium (IRDA §80C default).
   const [sumAssuredTouched, setSumAssuredTouched] = useState(
@@ -232,6 +311,17 @@ export const PolicyFormPage = ({ mode, initial, onSaved }: Props) => {
   }, [watched.commencementDate, watched.paymentMode, watched.premiumPaymentTermMonths]);
 
   const onSubmit = async (values: PolicyFormValues) => {
+    // In edit mode: if any schedule-affecting field changed, ask the
+    // user to confirm before regenerating the pending payment + maturity
+    // schedule. Past paid installments are preserved either way.
+    if (mode === 'edit' && initial) {
+      const diffs = describeScheduleDiffs(initial as PolicyFormValues, values);
+      if (diffs.length > 0) {
+        setScheduleChangeConfirm({ values, diffs });
+        return;
+      }
+    }
+
     // Matured policies bypass the premium-side cross-field checks because
     // they may have been added with placeholder premium data.
     if (values.status !== 'matured') {
@@ -811,6 +901,40 @@ export const PolicyFormPage = ({ mode, initial, onSaved }: Props) => {
             await doSave(v);
           }}
         />
+        <ScheduleChangeDialog
+          payload={scheduleChangeConfirm}
+          onCancel={() => setScheduleChangeConfirm(null)}
+          onProceed={async () => {
+            const v = scheduleChangeConfirm!.values;
+            setScheduleChangeConfirm(null);
+            // Re-run the rest of validation (sum assured, PPT vs term)
+            // by going through onSubmit again, but with this same set of
+            // values. To avoid loop, call doSave directly after the
+            // checks below.
+            if (v.status !== 'matured') {
+              if (
+                Number.isFinite(v.premiumPaymentTermMonths) &&
+                Number.isFinite(v.policyTermMonths) &&
+                v.premiumPaymentTermMonths > v.policyTermMonths
+              ) {
+                toast.error(
+                  `Premium payment term (${v.premiumPaymentTermMonths} months) can't exceed policy term (${v.policyTermMonths} months).`,
+                );
+                return;
+              }
+              if (
+                Number.isFinite(v.sumAssured) &&
+                Number.isFinite(v.yearlyTotalPremium) &&
+                v.yearlyTotalPremium > 0 &&
+                v.sumAssured < 10 * v.yearlyTotalPremium
+              ) {
+                setSumAssuredWarning(v);
+                return;
+              }
+            }
+            await doSave(v);
+          }}
+        />
       </form>
     );
   }
@@ -882,6 +1006,17 @@ export const PolicyFormPage = ({ mode, initial, onSaved }: Props) => {
           await doSave(v);
         }}
       />
+      {/* Create mode never triggers ScheduleChangeDialog because there's
+          no "before" — kept mounted for symmetry; payload is always null. */}
+      <ScheduleChangeDialog
+        payload={scheduleChangeConfirm}
+        onCancel={() => setScheduleChangeConfirm(null)}
+        onProceed={async () => {
+          const v = scheduleChangeConfirm!.values;
+          setScheduleChangeConfirm(null);
+          await doSave(v);
+        }}
+      />
     </form>
   );
 };
@@ -930,6 +1065,52 @@ const SumAssuredWarningDialog = ({
     </AlertDialog>
   );
 };
+
+// Confirmation shown when the user edits a policy and changes one of
+// the fields that drive the payment / maturity schedule.
+const ScheduleChangeDialog = ({
+  payload,
+  onCancel,
+  onProceed,
+}: {
+  payload:
+    | { values: PolicyFormValues; diffs: { label: string; before: string; after: string }[] }
+    | null;
+  onCancel: () => void;
+  onProceed: () => void;
+}) => (
+  <AlertDialog open={Boolean(payload)} onOpenChange={(o) => !o && onCancel()}>
+    <AlertDialogContent>
+      <AlertDialogHeader>
+        <AlertDialogTitle>Confirm schedule change</AlertDialogTitle>
+        <AlertDialogDescription>
+          You're about to change fields that drive this policy's schedule.
+          Saving will regenerate the <strong>pending</strong> installments
+          on the Payments tab and the pending maturity repayments on the
+          Repayments tab. Past paid installments and received repayments
+          are preserved.
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+      {payload && payload.diffs.length > 0 && (
+        <div className="space-y-1 rounded-md border bg-muted/30 p-3 text-xs">
+          {payload.diffs.map((d) => (
+            <div key={d.label} className="grid grid-cols-3 gap-2">
+              <span className="font-medium text-muted-foreground">{d.label}</span>
+              <span className="line-through text-muted-foreground">{d.before}</span>
+              <span className="font-medium">{d.after}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <AlertDialogFooter>
+        <AlertDialogCancel onClick={onCancel}>Cancel</AlertDialogCancel>
+        <AlertDialogAction onClick={onProceed}>
+          Save & regenerate
+        </AlertDialogAction>
+      </AlertDialogFooter>
+    </AlertDialogContent>
+  </AlertDialog>
+);
 
 // --- Stepper indicator ---
 

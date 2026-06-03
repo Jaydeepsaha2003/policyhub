@@ -12,6 +12,16 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { DateInputDMY } from '@/components/ui/date-input-dmy';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useRouter } from '@/lib/router';
 import { toast } from 'sonner';
 import { isoToday, paiseToRupees } from '@/lib/utils';
@@ -63,6 +73,19 @@ export const MutualFundFormPage = (props: Props) => {
   const [form, setForm] = useState<Form>(empty());
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(props.mode === 'create');
+  // Snapshot of the loaded values in edit mode — used to diff against
+  // the form state at submit time so we can confirm a schedule change.
+  const [initialSnapshot, setInitialSnapshot] = useState<{
+    type: MfType;
+    amount: number; // rupees
+    startDate: string;
+  } | null>(null);
+  const [scheduleConfirm, setScheduleConfirm] = useState<
+    | {
+        diffs: { label: string; before: string; after: string }[];
+      }
+    | null
+  >(null);
 
   useEffect(() => {
     if (props.mode === 'edit') {
@@ -92,6 +115,11 @@ export const MutualFundFormPage = (props: Props) => {
             debitBranchName: r.debitBranchName ?? '',
             notes: r.notes ?? '',
           });
+          setInitialSnapshot({
+            type: r.type,
+            amount: paiseToRupees(r.amount),
+            startDate: r.startDate,
+          });
           setLoaded(true);
         } catch (err) {
           toast.error('Load failed', { description: (err as Error).message });
@@ -101,6 +129,29 @@ export const MutualFundFormPage = (props: Props) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const buildPayload = () => {
+    const amt = Number(form.amount);
+    return {
+      folioNo: form.folioNo.trim(),
+      accountHolder: form.accountHolder.trim(),
+      agentName: form.agentName.trim() || undefined,
+      agentContact: form.agentContact.trim() || undefined,
+      provider: form.provider.trim(),
+      schemeName: form.schemeName.trim(),
+      type: form.type,
+      amount: amt,
+      startDate: form.startDate,
+      // No installmentCount — the repo defaults it from `type`.
+      status: form.status,
+      debitBankName: form.debitBankName.trim() || undefined,
+      debitAccountNo: form.debitAccountNo.trim() || undefined,
+      debitIfsc: form.debitIfsc.trim() || undefined,
+      debitAccountHolder: form.debitAccountHolder.trim() || undefined,
+      debitBranchName: form.debitBranchName.trim() || undefined,
+      notes: form.notes.trim() || undefined,
+    };
+  };
+
   const submit = async () => {
     if (!form.folioNo.trim()) return toast.error('Folio number is required');
     if (!form.accountHolder.trim()) return toast.error('Account holder is required');
@@ -109,27 +160,46 @@ export const MutualFundFormPage = (props: Props) => {
     const amt = Number(form.amount);
     if (!Number.isFinite(amt) || amt <= 0)
       return toast.error('Amount must be greater than zero');
+
+    // Edit mode + a schedule-affecting field changed → confirm first.
+    // updateMutualFund will regenerate pending SIP installments on the
+    // Payments tab.
+    if (props.mode === 'edit' && initialSnapshot) {
+      const diffs: { label: string; before: string; after: string }[] = [];
+      if (initialSnapshot.type !== form.type) {
+        diffs.push({
+          label: 'Type / Frequency',
+          before: initialSnapshot.type,
+          after: form.type,
+        });
+      }
+      if (initialSnapshot.amount !== amt) {
+        diffs.push({
+          label: 'Amount',
+          before: `₹${initialSnapshot.amount}`,
+          after: `₹${amt}`,
+        });
+      }
+      if (initialSnapshot.startDate !== form.startDate) {
+        diffs.push({
+          label: 'Start date',
+          before: initialSnapshot.startDate,
+          after: form.startDate,
+        });
+      }
+      if (diffs.length > 0) {
+        setScheduleConfirm({ diffs });
+        return;
+      }
+    }
+
+    await doSave();
+  };
+
+  const doSave = async () => {
     setSaving(true);
     try {
-      const payload = {
-        folioNo: form.folioNo.trim(),
-        accountHolder: form.accountHolder.trim(),
-        agentName: form.agentName.trim() || undefined,
-        agentContact: form.agentContact.trim() || undefined,
-        provider: form.provider.trim(),
-        schemeName: form.schemeName.trim(),
-        type: form.type,
-        amount: amt,
-        startDate: form.startDate,
-        // No installmentCount — the repo defaults it from `type`.
-        status: form.status,
-        debitBankName: form.debitBankName.trim() || undefined,
-        debitAccountNo: form.debitAccountNo.trim() || undefined,
-        debitIfsc: form.debitIfsc.trim() || undefined,
-        debitAccountHolder: form.debitAccountHolder.trim() || undefined,
-        debitBranchName: form.debitBranchName.trim() || undefined,
-        notes: form.notes.trim() || undefined,
-      };
+      const payload = buildPayload();
       if (props.mode === 'create') {
         const r = (await window.policyhub.mutualFunds.create(payload)) as any;
         toast.success('Mutual fund added');
@@ -327,6 +397,51 @@ export const MutualFundFormPage = (props: Props) => {
           </Button>
         </div>
       </CardContent>
+
+      {/* Confirmation when a schedule-affecting field changed. */}
+      <AlertDialog
+        open={Boolean(scheduleConfirm)}
+        onOpenChange={(o) => !o && setScheduleConfirm(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm schedule change</AlertDialogTitle>
+            <AlertDialogDescription>
+              Saving will regenerate this fund's <strong>pending</strong>{' '}
+              installments on the Payments tab. Past paid installments
+              are preserved.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {scheduleConfirm && scheduleConfirm.diffs.length > 0 && (
+            <div className="space-y-1 rounded-md border bg-muted/30 p-3 text-xs">
+              {scheduleConfirm.diffs.map((d) => (
+                <div key={d.label} className="grid grid-cols-3 gap-2">
+                  <span className="font-medium text-muted-foreground">
+                    {d.label}
+                  </span>
+                  <span className="line-through text-muted-foreground">
+                    {d.before}
+                  </span>
+                  <span className="font-medium">{d.after}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setScheduleConfirm(null)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                setScheduleConfirm(null);
+                await doSave();
+              }}
+            >
+              Save & regenerate
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 };

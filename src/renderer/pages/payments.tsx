@@ -141,6 +141,17 @@ export const PaymentsPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, policyId, from, to, typeFilter]);
 
+  // Auto-refresh on window focus so the tab catches schedule changes
+  // made elsewhere (policy edit / MF edit / bulk template upload /
+  // imported DB / reinstall). Also covers the case where the user
+  // alt-tabs back from another app after running an action.
+  useEffect(() => {
+    const onFocus = () => load();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, policyId, from, to, typeFilter]);
+
   const policyMap = useMemo(() => new Map(policies.map((p) => [p.id, p])), [policies]);
 
   // Companies / holders for the filter dropdowns. Policies contribute company
