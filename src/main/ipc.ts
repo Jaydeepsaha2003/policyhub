@@ -220,8 +220,19 @@ export const registerIpc = () => {
   });
 
   // Payments
-  handle(IPC.paymentsListByPolicy, (policyId: string) => listPaymentsByPolicy(policyId));
-  handle(IPC.paymentsListAll, (filters: any) => listAllPayments(filters));
+  // markOverdueInstallments flips status pending → overdue for any row
+  // whose due date is already past. Runs on every list call so the
+  // Payments tab and the policy detail timeline stay self-consistent —
+  // especially after a regenerate, which resets overdue rows back to
+  // pending and relies on this flip to re-apply the status.
+  handle(IPC.paymentsListByPolicy, (policyId: string) => {
+    markOverdueInstallments();
+    return listPaymentsByPolicy(policyId);
+  });
+  handle(IPC.paymentsListAll, (filters: any) => {
+    markOverdueInstallments();
+    return listAllPayments(filters);
+  });
   handleMutate(IPC.paymentsMarkPaid, (input: any) => markPaid(input));
   handleMutate(
     IPC.paymentsMarkAllPaidUpTo,
