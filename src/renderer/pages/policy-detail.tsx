@@ -38,6 +38,16 @@ type Payment = {
   notes: string | null;
 };
 
+// Display-side status: treats any past-due pending row as overdue
+// regardless of the stored status. Keeps the timeline honest between
+// the SQL auto-flip writes.
+const effectiveStatus = (
+  status: Payment['status'],
+  dueDate: string,
+  todayIso: string,
+): Payment['status'] =>
+  status === 'pending' && dueDate < todayIso ? 'overdue' : status;
+
 const statusBadge = (s: Payment['status']) => {
   switch (s) {
     case 'paid':
@@ -212,16 +222,19 @@ export const PolicyDetailPage = ({ id }: { id: string }) => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {payments.map((p) => (
+                  {payments.map((p) => {
+                    const todayIso = new Date().toISOString().slice(0, 10);
+                    const status = effectiveStatus(p.status, p.dueDate, todayIso);
+                    return (
                     <TableRow key={p.id}>
                       <TableCell>{p.installmentNo}</TableCell>
                       <TableCell>{formatDate(p.dueDate)}</TableCell>
                       <TableCell className="text-right tabular-nums">
                         {formatCurrencyPaise(p.expectedAmount)}
                       </TableCell>
-                      <TableCell>{statusBadge(p.status)}</TableCell>
+                      <TableCell>{statusBadge(status)}</TableCell>
                       <TableCell className="text-right">
-                        {p.status !== 'paid' && (
+                        {status !== 'paid' && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -233,14 +246,15 @@ export const PolicyDetailPage = ({ id }: { id: string }) => {
                             Mark paid
                           </Button>
                         )}
-                        {p.status === 'paid' && (
+                        {status === 'paid' && (
                           <span className="text-xs text-muted-foreground">
                             {formatDate(p.paidDate)} · {p.paymentMethod ?? '—'}
                           </span>
                         )}
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>

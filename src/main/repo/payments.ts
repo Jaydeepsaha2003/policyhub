@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, isNull, lte, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, isNull, lte, sql } from 'drizzle-orm';
 import { differenceInCalendarDays, format } from 'date-fns';
 import { getDb, getRawSqlite } from '../db';
 import { policies, premiumPayments } from '../../shared/db/schema';
@@ -33,7 +33,7 @@ export const listAllPayments = (filters?: {
     .from(premiumPayments)
     .innerJoin(policies, eq(premiumPayments.policyId, policies.id))
     .where(and(...where))
-    .orderBy(desc(premiumPayments.dueDate))
+    .orderBy(asc(premiumPayments.dueDate))
     .all();
   return rows.map((r) => r.payment);
 };

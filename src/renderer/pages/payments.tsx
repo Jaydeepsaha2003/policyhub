@@ -179,7 +179,15 @@ export const PaymentsPage = () => {
   }, [policies, mfRows, companyFilter]);
 
   // Unified list with kind discriminator. Filters apply across both
-  // sources.
+  // sources. Sort by due date ASC so the oldest installment is at the
+  // top — matches the "next thing to deal with" reading order.
+  //
+  // Defensive display-side overdue flip: a row that's still marked
+  // 'pending' but whose due date is already in the past gets shown as
+  // 'overdue' in the UI. The backend's markOverdueInstallments runs on
+  // every list call (v0.4.7+), but this client-side fallback keeps the
+  // status honest even between writes.
+  const todayIso = new Date().toISOString().slice(0, 10);
   const filtered = useMemo<UnifiedRow[]>(() => {
     const out: UnifiedRow[] = [];
     if (typeFilter !== 'mutual_fund') {
@@ -187,7 +195,9 @@ export const PaymentsPage = () => {
         const p = policyMap.get(r.policyId);
         if (companyFilter !== 'all' && p?.companyName !== companyFilter) continue;
         if (holderFilter !== 'all' && p?.policyHolder !== holderFilter) continue;
-        out.push({ kind: 'policy', ...r });
+        const status =
+          r.status === 'pending' && r.dueDate < todayIso ? 'overdue' : r.status;
+        out.push({ kind: 'policy', ...r, status });
       }
     }
     if (typeFilter !== 'policy') {
@@ -196,13 +206,14 @@ export const PaymentsPage = () => {
         if (holderFilter !== 'all' && m.accountHolder !== holderFilter) continue;
         // A specific policyId filter excludes all MF rows.
         if (policyId !== 'all') continue;
-        out.push({ kind: 'mutual_fund', ...m });
+        const status =
+          m.status === 'pending' && m.dueDate < todayIso ? 'overdue' : m.status;
+        out.push({ kind: 'mutual_fund', ...m, status });
       }
     }
-    // Sort by due date desc (matches the policy-only behaviour).
-    out.sort((a, b) => b.dueDate.localeCompare(a.dueDate));
+    out.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
     return out;
-  }, [rows, mfRows, policyMap, companyFilter, holderFilter, typeFilter, policyId]);
+  }, [rows, mfRows, policyMap, companyFilter, holderFilter, typeFilter, policyId, todayIso]);
 
   const anyFilterActive =
     status !== 'all' ||
