@@ -12,7 +12,11 @@ type PolicyHubApi = {
     list: () => Promise<any[]>;
     get: (id: string) => Promise<any>;
     create: (input: any) => Promise<string>;
-    update: (id: string, input: any) => Promise<any>;
+    update: (
+      id: string,
+      input: any,
+      opts?: { regenerateScope?: 'future_only' | 'including_overdue' },
+    ) => Promise<any>;
     remove: (id: string) => Promise<void>;
     syncMaturity: (id: string) => Promise<{ created: number; removed: number }>;
     exportExcel: (opts?: {
@@ -101,7 +105,11 @@ type PolicyHubApi = {
     list: () => Promise<any[]>;
     get: (id: string) => Promise<any>;
     create: (input: any) => Promise<any>;
-    update: (id: string, input: any) => Promise<any>;
+    update: (
+      id: string,
+      input: any,
+      opts?: { regenerateScope?: 'future_only' | 'including_overdue' },
+    ) => Promise<any>;
     remove: (id: string) => Promise<void>;
     listDeleted: () => Promise<any[]>;
     restore: (id: string) => Promise<void>;

@@ -153,10 +153,13 @@ export const registerIpc = () => {
   handle(IPC.policiesList, () => listPolicies());
   handle(IPC.policiesGet, (id: string) => getPolicy(id));
   handleMutate(IPC.policiesCreate, (input: any) => createPolicy(input));
-  handleMutate(IPC.policiesUpdate, (id: string, input: any) => {
-    updatePolicy(id, input);
-    return getPolicy(id);
-  });
+  handleMutate(
+    IPC.policiesUpdate,
+    (id: string, input: any, opts?: { regenerateScope?: 'future_only' | 'including_overdue' }) => {
+      updatePolicy(id, input, opts);
+      return getPolicy(id);
+    },
+  );
   handleMutate(IPC.policiesDelete, (id: string) => deletePolicy(id));
   handleMutate(IPC.policiesSyncMaturity, (id: string) => generateMaturityRepayments(id));
   handle(IPC.policiesExportExcel, (opts?: { policyIds?: string[] }) =>
@@ -283,8 +286,10 @@ export const registerIpc = () => {
     const id = createMutualFund(input);
     return getMutualFund(id);
   });
-  handleMutate(IPC.mutualFundsUpdate, (id: string, input: any) => {
-    updateMutualFund(id, input);
+  handleMutate(
+    IPC.mutualFundsUpdate,
+    (id: string, input: any, opts?: { regenerateScope?: 'future_only' | 'including_overdue' }) => {
+    updateMutualFund(id, input, opts);
     return getMutualFund(id);
   });
   handleMutate(IPC.mutualFundsDelete, (id: string) => deleteMutualFund(id));

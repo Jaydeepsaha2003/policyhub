@@ -19,7 +19,11 @@ const api = {
     list: () => invoke(IPC.policiesList),
     get: (id: string) => invoke(IPC.policiesGet, id),
     create: (input: unknown) => invoke<string>(IPC.policiesCreate, input),
-    update: (id: string, input: unknown) => invoke(IPC.policiesUpdate, id, input),
+    update: (
+      id: string,
+      input: unknown,
+      opts?: { regenerateScope?: 'future_only' | 'including_overdue' },
+    ) => invoke(IPC.policiesUpdate, id, input, opts),
     remove: (id: string) => invoke(IPC.policiesDelete, id),
     syncMaturity: (id: string) =>
       invoke<{ created: number; removed: number }>(IPC.policiesSyncMaturity, id),
@@ -98,7 +102,11 @@ const api = {
     list: () => invoke<any[]>(IPC.mutualFundsList),
     get: (id: string) => invoke(IPC.mutualFundsGet, id),
     create: (input: unknown) => invoke(IPC.mutualFundsCreate, input),
-    update: (id: string, input: unknown) => invoke(IPC.mutualFundsUpdate, id, input),
+    update: (
+      id: string,
+      input: unknown,
+      opts?: { regenerateScope?: 'future_only' | 'including_overdue' },
+    ) => invoke(IPC.mutualFundsUpdate, id, input, opts),
     remove: (id: string) => invoke(IPC.mutualFundsDelete, id),
     listDeleted: () => invoke<any[]>(IPC.mutualFundsListDeleted),
     restore: (id: string) => invoke(IPC.mutualFundsRestore, id),

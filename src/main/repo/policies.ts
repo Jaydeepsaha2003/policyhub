@@ -91,7 +91,11 @@ export const createPolicy = (input: PolicyFormInput) => {
   return id;
 };
 
-export const updatePolicy = (id: string, input: PolicyFormInput) => {
+export const updatePolicy = (
+  id: string,
+  input: PolicyFormInput,
+  opts?: { regenerateScope?: RegenerateScope },
+) => {
   const db = getDb();
   const before = getPolicy(id);
   if (!before) throw new Error('Policy not found');
@@ -108,7 +112,7 @@ export const updatePolicy = (id: string, input: PolicyFormInput) => {
     before.premiumAmount !== data.premiumAmount;
 
   if (scheduleChanged && data.status !== 'matured') {
-    regenerateInstallments(id);
+    regenerateInstallments(id, opts?.regenerateScope ?? 'future_only');
   }
 
   // Auto-sync maturity repayments if any maturity-related field changed.
@@ -167,8 +171,23 @@ export const countActivePolicies = () => {
   return row?.c ?? 0;
 };
 
-// Regenerate only `pending` rows; preserve paid history.
-export const regenerateInstallments = (policyId: string) => {
+// Regenerate installments to match the policy's current schedule.
+// Paid rows are always preserved.
+//
+// scope:
+//   'future_only' (default) — only update rows whose existing status is
+//      'pending'. Past-due overdue rows are left as-is, so the historical
+//      record of what was outstanding stays accurate.
+//   'including_overdue' — also update overdue rows, resetting them to
+//      pending with the new amount/date so the regenerated schedule
+//      fully takes over. (The status flips back to overdue automatically
+//      on next load if the new due date is still in the past.)
+export type RegenerateScope = 'future_only' | 'including_overdue';
+
+export const regenerateInstallments = (
+  policyId: string,
+  scope: RegenerateScope = 'future_only',
+) => {
   const db = getDb();
   const p = getPolicy(policyId);
   if (!p) return;
@@ -190,11 +209,18 @@ export const regenerateInstallments = (policyId: string) => {
   for (const inst of desired) {
     const existingRow = byInstallment.get(inst.installmentNo);
     if (existingRow) {
-      if (existingRow.status === 'pending') {
+      const shouldUpdate =
+        existingRow.status === 'pending' ||
+        (scope === 'including_overdue' && existingRow.status === 'overdue');
+      if (shouldUpdate) {
         db.update(premiumPayments)
           .set({
             dueDate: inst.dueDate,
             expectedAmount: p.premiumAmount,
+            // Reset overdue → pending so the new schedule is the active
+            // one. markOverdueInstallments will re-flip on next load if
+            // the new due date is still in the past.
+            status: 'pending',
             updatedAt: new Date().toISOString(),
           })
           .where(eq(premiumPayments.id, existingRow.id))

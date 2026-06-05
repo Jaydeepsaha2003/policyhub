@@ -89,7 +89,13 @@ export const createMutualFund = (input: MutualFundFormInput): string => {
   return id;
 };
 
-export const updateMutualFund = (id: string, input: MutualFundFormInput) => {
+export type MfRegenerateScope = 'future_only' | 'including_overdue';
+
+export const updateMutualFund = (
+  id: string,
+  input: MutualFundFormInput,
+  opts?: { regenerateScope?: MfRegenerateScope },
+) => {
   const db = getDb();
   const before = getMutualFund(id);
   if (!before) throw new Error('Mutual fund not found');
@@ -106,7 +112,7 @@ export const updateMutualFund = (id: string, input: MutualFundFormInput) => {
     before.installmentCount !== data.installmentCount ||
     before.amount !== data.amount;
   if (scheduleChanged && data.status === 'active') {
-    regenerateMfInstallments(id);
+    regenerateMfInstallments(id, opts?.regenerateScope ?? 'future_only');
   }
 };
 
@@ -149,7 +155,14 @@ const stepMonthsForType = (type: string): number => {
 
 // Build the installment schedule. Preserves any rows already marked paid
 // and rewrites the pending tail.
-export const regenerateMfInstallments = (mutualFundId: string) => {
+//
+// scope: same semantics as policies.regenerateInstallments. 'future_only'
+// (default) leaves overdue SIP rows alone; 'including_overdue' also
+// updates them and resets them to pending.
+export const regenerateMfInstallments = (
+  mutualFundId: string,
+  scope: MfRegenerateScope = 'future_only',
+) => {
   const db = getDb();
   const mf = getMutualFund(mutualFundId);
   if (!mf) return;
@@ -174,11 +187,18 @@ export const regenerateMfInstallments = (mutualFundId: string) => {
   for (const inst of desired) {
     const existingRow = byInstallment.get(inst.installmentNo);
     if (existingRow) {
-      if (existingRow.status === 'pending') {
+      const shouldUpdate =
+        existingRow.status === 'pending' ||
+        (scope === 'including_overdue' && existingRow.status === 'overdue');
+      if (shouldUpdate) {
         db.update(mutualFundPayments)
           .set({
             dueDate: inst.dueDate,
             expectedAmount: mf.amount,
+            // Reset overdue → pending so the new schedule applies. The
+            // overdue auto-flip will catch up rows that are still past
+            // their new due date on next load.
+            status: 'pending',
             updatedAt: new Date().toISOString(),
           })
           .where(eq(mutualFundPayments.id, existingRow.id))

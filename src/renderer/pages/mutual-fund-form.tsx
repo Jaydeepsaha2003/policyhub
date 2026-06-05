@@ -86,6 +86,12 @@ export const MutualFundFormPage = (props: Props) => {
       }
     | null
   >(null);
+  const [confirmScope, setConfirmScope] = useState<
+    'future_only' | 'including_overdue'
+  >('future_only');
+  useEffect(() => {
+    if (scheduleConfirm) setConfirmScope('future_only');
+  }, [scheduleConfirm]);
 
   useEffect(() => {
     if (props.mode === 'edit') {
@@ -196,7 +202,9 @@ export const MutualFundFormPage = (props: Props) => {
     await doSave();
   };
 
-  const doSave = async () => {
+  const doSave = async (opts?: {
+    regenerateScope?: 'future_only' | 'including_overdue';
+  }) => {
     setSaving(true);
     try {
       const payload = buildPayload();
@@ -205,7 +213,7 @@ export const MutualFundFormPage = (props: Props) => {
         toast.success('Mutual fund added');
         navigate(`/mutual-funds/${r.id}`);
       } else {
-        await window.policyhub.mutualFunds.update(props.id, payload);
+        await window.policyhub.mutualFunds.update(props.id, payload, opts);
         toast.success('Mutual fund updated');
         navigate(`/mutual-funds/${props.id}`);
       }
@@ -407,9 +415,9 @@ export const MutualFundFormPage = (props: Props) => {
           <AlertDialogHeader>
             <AlertDialogTitle>Confirm schedule change</AlertDialogTitle>
             <AlertDialogDescription>
-              Saving will regenerate this fund's <strong>pending</strong>{' '}
-              installments on the Payments tab. Past paid installments
-              are preserved.
+              Saving will regenerate this fund's SIP installments on the
+              Payments tab. Past <strong>paid</strong> installments are
+              always preserved.
             </AlertDialogDescription>
           </AlertDialogHeader>
           {scheduleConfirm && scheduleConfirm.diffs.length > 0 && (
@@ -427,14 +435,54 @@ export const MutualFundFormPage = (props: Props) => {
               ))}
             </div>
           )}
+          <div className="space-y-2 rounded-md border p-3 text-sm">
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Apply the new schedule to:
+            </div>
+            <label className="flex cursor-pointer items-start gap-2 rounded p-1 hover:bg-accent/40">
+              <input
+                type="radio"
+                name="mf-regen-scope"
+                checked={confirmScope === 'future_only'}
+                onChange={() => setConfirmScope('future_only')}
+                className="mt-0.5"
+              />
+              <div className="flex-1">
+                <div className="font-medium">From today forward only</div>
+                <div className="text-xs text-muted-foreground">
+                  Only upcoming <strong>pending</strong> installments are
+                  updated. Past <strong>overdue</strong> rows keep their
+                  original amount and date.
+                </div>
+              </div>
+            </label>
+            <label className="flex cursor-pointer items-start gap-2 rounded p-1 hover:bg-accent/40">
+              <input
+                type="radio"
+                name="mf-regen-scope"
+                checked={confirmScope === 'including_overdue'}
+                onChange={() => setConfirmScope('including_overdue')}
+                className="mt-0.5"
+              />
+              <div className="flex-1">
+                <div className="font-medium">
+                  Also update past overdue installments
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Overdue SIP rows are rewritten to the new schedule too.
+                </div>
+              </div>
+            </label>
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setScheduleConfirm(null)}>
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={async () => {
+                const scope = confirmScope;
                 setScheduleConfirm(null);
-                await doSave();
+                await doSave({ regenerateScope: scope });
               }}
             >
               Save & regenerate

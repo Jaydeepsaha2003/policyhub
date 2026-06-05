@@ -351,7 +351,10 @@ export const PolicyFormPage = ({ mode, initial, onSaved }: Props) => {
     await doSave(values);
   };
 
-  const doSave = async (values: PolicyFormValues) => {
+  const doSave = async (
+    values: PolicyFormValues,
+    opts?: { regenerateScope?: 'future_only' | 'including_overdue' },
+  ) => {
     setSaving(true);
     try {
       if (mode === 'create') {
@@ -387,7 +390,7 @@ export const PolicyFormPage = ({ mode, initial, onSaved }: Props) => {
         if (onSaved) onSaved(id);
         else navigate(`/policies/${id}`);
       } else if (initial?.id) {
-        await window.policyhub.policies.update(initial.id, values);
+        await window.policyhub.policies.update(initial.id, values, opts);
         toast.success('Policy updated');
         if (onSaved) onSaved(initial.id);
       }
@@ -904,7 +907,7 @@ export const PolicyFormPage = ({ mode, initial, onSaved }: Props) => {
         <ScheduleChangeDialog
           payload={scheduleChangeConfirm}
           onCancel={() => setScheduleChangeConfirm(null)}
-          onProceed={async () => {
+          onProceed={async (scope) => {
             const v = scheduleChangeConfirm!.values;
             setScheduleChangeConfirm(null);
             // Re-run the rest of validation (sum assured, PPT vs term)
@@ -932,7 +935,7 @@ export const PolicyFormPage = ({ mode, initial, onSaved }: Props) => {
                 return;
               }
             }
-            await doSave(v);
+            await doSave(v, { regenerateScope: scope });
           }}
         />
       </form>
@@ -1011,10 +1014,10 @@ export const PolicyFormPage = ({ mode, initial, onSaved }: Props) => {
       <ScheduleChangeDialog
         payload={scheduleChangeConfirm}
         onCancel={() => setScheduleChangeConfirm(null)}
-        onProceed={async () => {
+        onProceed={async (scope) => {
           const v = scheduleChangeConfirm!.values;
           setScheduleChangeConfirm(null);
-          await doSave(v);
+          await doSave(v, { regenerateScope: scope });
         }}
       />
     </form>
@@ -1077,40 +1080,88 @@ const ScheduleChangeDialog = ({
     | { values: PolicyFormValues; diffs: { label: string; before: string; after: string }[] }
     | null;
   onCancel: () => void;
-  onProceed: () => void;
-}) => (
-  <AlertDialog open={Boolean(payload)} onOpenChange={(o) => !o && onCancel()}>
-    <AlertDialogContent>
-      <AlertDialogHeader>
-        <AlertDialogTitle>Confirm schedule change</AlertDialogTitle>
-        <AlertDialogDescription>
-          You're about to change fields that drive this policy's schedule.
-          Saving will regenerate the <strong>pending</strong> installments
-          on the Payments tab and the pending maturity repayments on the
-          Repayments tab. Past paid installments and received repayments
-          are preserved.
-        </AlertDialogDescription>
-      </AlertDialogHeader>
-      {payload && payload.diffs.length > 0 && (
-        <div className="space-y-1 rounded-md border bg-muted/30 p-3 text-xs">
-          {payload.diffs.map((d) => (
-            <div key={d.label} className="grid grid-cols-3 gap-2">
-              <span className="font-medium text-muted-foreground">{d.label}</span>
-              <span className="line-through text-muted-foreground">{d.before}</span>
-              <span className="font-medium">{d.after}</span>
+  onProceed: (scope: 'future_only' | 'including_overdue') => void;
+}) => {
+  const [scope, setScope] = useState<'future_only' | 'including_overdue'>(
+    'future_only',
+  );
+  // Reset to default whenever the dialog reopens.
+  useEffect(() => {
+    if (payload) setScope('future_only');
+  }, [payload]);
+  return (
+    <AlertDialog open={Boolean(payload)} onOpenChange={(o) => !o && onCancel()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Confirm schedule change</AlertDialogTitle>
+          <AlertDialogDescription>
+            You're about to change fields that drive this policy's schedule.
+            Saving will regenerate installments on the Payments tab. Past{' '}
+            <strong>paid</strong> installments are always preserved.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        {payload && payload.diffs.length > 0 && (
+          <div className="space-y-1 rounded-md border bg-muted/30 p-3 text-xs">
+            {payload.diffs.map((d) => (
+              <div key={d.label} className="grid grid-cols-3 gap-2">
+                <span className="font-medium text-muted-foreground">{d.label}</span>
+                <span className="line-through text-muted-foreground">{d.before}</span>
+                <span className="font-medium">{d.after}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="space-y-2 rounded-md border p-3 text-sm">
+          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Apply the new schedule to:
+          </div>
+          <label className="flex cursor-pointer items-start gap-2 rounded p-1 hover:bg-accent/40">
+            <input
+              type="radio"
+              name="regen-scope"
+              checked={scope === 'future_only'}
+              onChange={() => setScope('future_only')}
+              className="mt-0.5"
+            />
+            <div className="flex-1">
+              <div className="font-medium">From today forward only</div>
+              <div className="text-xs text-muted-foreground">
+                Only upcoming <strong>pending</strong> installments are updated.
+                Past <strong>overdue</strong> installments keep their original
+                amount and date — a clean historical record of what was owed.
+              </div>
             </div>
-          ))}
+          </label>
+          <label className="flex cursor-pointer items-start gap-2 rounded p-1 hover:bg-accent/40">
+            <input
+              type="radio"
+              name="regen-scope"
+              checked={scope === 'including_overdue'}
+              onChange={() => setScope('including_overdue')}
+              className="mt-0.5"
+            />
+            <div className="flex-1">
+              <div className="font-medium">
+                Also update past overdue installments
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Overdue rows are rewritten to the new schedule too. Use this
+                when you're correcting a mistake in the original setup, not
+                just changing terms going forward.
+              </div>
+            </div>
+          </label>
         </div>
-      )}
-      <AlertDialogFooter>
-        <AlertDialogCancel onClick={onCancel}>Cancel</AlertDialogCancel>
-        <AlertDialogAction onClick={onProceed}>
-          Save & regenerate
-        </AlertDialogAction>
-      </AlertDialogFooter>
-    </AlertDialogContent>
-  </AlertDialog>
-);
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={onCancel}>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={() => onProceed(scope)}>
+            Save & regenerate
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+};
 
 // --- Stepper indicator ---
 
