@@ -21,6 +21,7 @@ import {
   Activity,
   AlertTriangle,
   CalendarClock,
+  CalendarCheck,
   IndianRupee,
   LineChart,
   ReceiptText,
@@ -55,6 +56,9 @@ type Overview = {
   collectedInWindow: number;
   latePenaltyInWindow: number;
   remindersSentLast7Days: number;
+  eventsDueInWindow: number;
+  eventsOverdueCount: number;
+  eventsCompletedInWindow: number;
 };
 
 type SeriesPoint = {
@@ -207,51 +211,64 @@ export const DashboardPage = () => {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-7">
+      <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4">
         <MetricCard
-          icon={<Activity className="h-4 w-4 text-primary" />}
+          icon={<Activity className="h-3.5 w-3.5 text-primary" />}
           label="Active policies"
           value={overview?.totalActivePolicies ?? '—'}
-          description="Currently in force"
+          description="In force"
         />
         <MetricCard
-          icon={<LineChart className="h-4 w-4 text-indigo-500" />}
-          label="Active mutual funds"
+          icon={<LineChart className="h-3.5 w-3.5 text-indigo-500" />}
+          label="Active MFs"
           value={overview?.totalActiveMutualFunds ?? '—'}
           description="Lumpsum + SIP"
         />
         <MetricCard
-          icon={<CalendarClock className="h-4 w-4 text-violet-500" />}
+          icon={<CalendarClock className="h-3.5 w-3.5 text-violet-500" />}
           label="Maturing"
           value={overview?.policiesMaturingInWindow ?? '—'}
-          description="In this window"
+          description="In window"
         />
         <MetricCard
-          icon={<AlertTriangle className="h-4 w-4 text-amber-500" />}
+          icon={<AlertTriangle className="h-3.5 w-3.5 text-amber-500" />}
           label="Premiums / SIPs due"
           value={overview?.premiumsDueInWindow ?? '—'}
           description="Pending + overdue"
         />
         <MetricCard
-          icon={<TrendingUp className="h-4 w-4 text-emerald-500" />}
+          icon={<TrendingUp className="h-3.5 w-3.5 text-emerald-500" />}
           label="Collected"
           value={overview ? formatCurrencyCompactPaise(overview.collectedInWindow) : '—'}
           fullValue={overview ? formatCurrencyPaise(overview.collectedInWindow) : undefined}
-          description={`${overview?.premiumsPaidInWindow ?? 0} installments`}
+          description={`${overview?.premiumsPaidInWindow ?? 0} paid`}
         />
         <MetricCard
-          icon={<IndianRupee className="h-4 w-4 text-red-500" />}
+          icon={<IndianRupee className="h-3.5 w-3.5 text-red-500" />}
           label="Outstanding overdue"
           value={overview ? formatCurrencyCompactPaise(overview.outstandingOverdueAmount) : '—'}
           fullValue={overview ? formatCurrencyPaise(overview.outstandingOverdueAmount) : undefined}
           description={`${overview?.overdueCount ?? 0} item(s)`}
         />
         <MetricCard
-          icon={<ReceiptText className="h-4 w-4 text-amber-500" />}
+          icon={<ReceiptText className="h-3.5 w-3.5 text-amber-500" />}
           label="GST + late fees"
           value={overview ? formatCurrencyCompactPaise(overview.latePenaltyInWindow) : '—'}
           fullValue={overview ? formatCurrencyPaise(overview.latePenaltyInWindow) : undefined}
           description="Policy fees in window"
+        />
+        <MetricCard
+          icon={<CalendarCheck className="h-3.5 w-3.5 text-sky-500" />}
+          label="Calendar events"
+          value={overview?.eventsDueInWindow ?? '—'}
+          description={
+            overview
+              ? `${overview.eventsOverdueCount} overdue · ${overview.eventsCompletedInWindow} done`
+              : 'In window'
+          }
+          tone={
+            overview && overview.eventsOverdueCount > 0 ? 'warning' : undefined
+          }
         />
       </div>
 
@@ -488,26 +505,40 @@ const MetricCard = ({
   value,
   fullValue,
   description,
+  tone,
 }: {
   icon: React.ReactNode;
   label: string;
   value: number | string;
   fullValue?: string;
   description: string;
-}) => (
-  <Card>
-    <CardContent className="p-5">
-      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-        {icon}
-        <span className="truncate">{label}</span>
-      </div>
-      <div
-        className="mt-2 truncate text-2xl font-semibold tracking-tight tabular-nums"
-        title={fullValue ?? (typeof value === 'string' ? value : String(value))}
-      >
-        {value}
-      </div>
-      <div className="mt-1 text-xs text-muted-foreground">{description}</div>
-    </CardContent>
-  </Card>
-);
+  tone?: 'warning' | 'danger' | 'success';
+}) => {
+  const valueColor =
+    tone === 'warning'
+      ? 'text-amber-600 dark:text-amber-400'
+      : tone === 'danger'
+        ? 'text-destructive'
+        : tone === 'success'
+          ? 'text-emerald-600 dark:text-emerald-400'
+          : 'text-foreground';
+  return (
+    <Card>
+      <CardContent className="p-3">
+        <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+          {icon}
+          <span className="truncate">{label}</span>
+        </div>
+        <div
+          className={`mt-1 truncate text-lg font-semibold tracking-tight tabular-nums ${valueColor}`}
+          title={fullValue ?? (typeof value === 'string' ? value : String(value))}
+        >
+          {value}
+        </div>
+        <div className="mt-0.5 truncate text-[10px] text-muted-foreground">
+          {description}
+        </div>
+      </CardContent>
+    </Card>
+  );
+};

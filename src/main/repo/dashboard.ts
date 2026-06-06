@@ -50,6 +50,12 @@ export type DashboardOverview = {
   collectedInWindow: number;       // paid_amount paid in window
   latePenaltyInWindow: number;     // sum of penalty + late_fee — policy-only (MFs don't carry fees)
   remindersSentLast7Days: number;
+  // Calendar / compliance events. `eventsDueInWindow` counts pending
+  // events with date in the selected window; `eventsOverdueCount` is
+  // a running total of past-due pending events across all time.
+  eventsDueInWindow: number;
+  eventsOverdueCount: number;
+  eventsCompletedInWindow: number;
 };
 
 export const buildOverview = (
@@ -163,6 +169,35 @@ export const buildOverview = (
     fmt(addDays(new Date(), -7)),
   ).c;
 
+  // Calendar event counts. Pending events in the selected window,
+  // pending events that are already past their date (overdue across
+  // all time), and events completed in the window.
+  const eventsDueInWindow = get<{ c: number }>(
+    `SELECT COUNT(*) AS c FROM calendar_events
+      WHERE deleted_at IS NULL
+        AND status = 'pending'
+        AND event_date BETWEEN ? AND ?`,
+    from,
+    to,
+  ).c;
+
+  const eventsOverdueCount = get<{ c: number }>(
+    `SELECT COUNT(*) AS c FROM calendar_events
+      WHERE deleted_at IS NULL
+        AND status = 'pending'
+        AND event_date < ?`,
+    today,
+  ).c;
+
+  const eventsCompletedInWindow = get<{ c: number }>(
+    `SELECT COUNT(*) AS c FROM calendar_events
+      WHERE deleted_at IS NULL
+        AND status = 'completed'
+        AND COALESCE(completed_date, event_date) BETWEEN ? AND ?`,
+    from,
+    to,
+  ).c;
+
   return {
     period,
     from,
@@ -178,6 +213,9 @@ export const buildOverview = (
     collectedInWindow,
     latePenaltyInWindow,
     remindersSentLast7Days,
+    eventsDueInWindow,
+    eventsOverdueCount,
+    eventsCompletedInWindow,
   };
 };
 
@@ -286,39 +324,45 @@ export const currentMonthPayments = () => {
   const sqlite = getRawSqlite();
   const from = fmt(startOfMonth(new Date()));
   const to = fmt(endOfMonth(new Date()));
+  // SQLite parses ORDER BY against the *last* SELECT in a UNION,
+  // which means our 'status' / 'dueDate' references couldn't bind to
+  // any column after the union ran. Wrap the UNION in a subquery so
+  // the outer ORDER BY sees the unified column names cleanly.
   return sqlite
     .prepare(
-      `SELECT 'policy' AS kind,
-              pp.id, pp.installment_no AS installmentNo, pp.due_date AS dueDate,
-              pp.expected_amount AS expectedAmount, pp.status,
-              pp.paid_date AS paidDate, pp.paid_amount AS paidAmount,
-              p.id AS policyId, p.policy_no AS policyNo,
-              p.policy_holder AS policyHolder, p.company_name AS companyName,
-              NULL AS mutualFundId, NULL AS folioNo,
-              NULL AS accountHolder, NULL AS provider, NULL AS schemeName
-         FROM premium_payments pp
-         JOIN policies p ON p.id = pp.policy_id
-        WHERE p.deleted_at IS NULL
-          AND ((pp.status IN ('pending','overdue') AND pp.due_date <= ?)
-            OR (pp.status = 'paid' AND pp.paid_date BETWEEN ? AND ?))
-       UNION ALL
-       SELECT 'mutual_fund' AS kind,
-              mp.id, mp.installment_no AS installmentNo, mp.due_date AS dueDate,
-              mp.expected_amount AS expectedAmount, mp.status,
-              mp.paid_date AS paidDate, mp.paid_amount AS paidAmount,
-              NULL AS policyId, NULL AS policyNo,
-              NULL AS policyHolder, NULL AS companyName,
-              m.id AS mutualFundId, m.folio_no AS folioNo,
-              m.account_holder AS accountHolder,
-              m.provider AS provider, m.scheme_name AS schemeName
-         FROM mutual_fund_payments mp
-         JOIN mutual_funds m ON m.id = mp.mutual_fund_id
-        WHERE m.deleted_at IS NULL
-          AND ((mp.status IN ('pending','overdue') AND mp.due_date <= ?)
-            OR (mp.status = 'paid' AND mp.paid_date BETWEEN ? AND ?))
-        ORDER BY
-          CASE status WHEN 'overdue' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END,
-          dueDate ASC`,
+      `SELECT * FROM (
+         SELECT 'policy' AS kind,
+                pp.id AS id, pp.installment_no AS installmentNo, pp.due_date AS dueDate,
+                pp.expected_amount AS expectedAmount, pp.status AS status,
+                pp.paid_date AS paidDate, pp.paid_amount AS paidAmount,
+                p.id AS policyId, p.policy_no AS policyNo,
+                p.policy_holder AS policyHolder, p.company_name AS companyName,
+                NULL AS mutualFundId, NULL AS folioNo,
+                NULL AS accountHolder, NULL AS provider, NULL AS schemeName
+           FROM premium_payments pp
+           JOIN policies p ON p.id = pp.policy_id
+          WHERE p.deleted_at IS NULL
+            AND ((pp.status IN ('pending','overdue') AND pp.due_date <= ?)
+              OR (pp.status = 'paid' AND pp.paid_date BETWEEN ? AND ?))
+         UNION ALL
+         SELECT 'mutual_fund' AS kind,
+                mp.id AS id, mp.installment_no AS installmentNo, mp.due_date AS dueDate,
+                mp.expected_amount AS expectedAmount, mp.status AS status,
+                mp.paid_date AS paidDate, mp.paid_amount AS paidAmount,
+                NULL AS policyId, NULL AS policyNo,
+                NULL AS policyHolder, NULL AS companyName,
+                m.id AS mutualFundId, m.folio_no AS folioNo,
+                m.account_holder AS accountHolder,
+                m.provider AS provider, m.scheme_name AS schemeName
+           FROM mutual_fund_payments mp
+           JOIN mutual_funds m ON m.id = mp.mutual_fund_id
+          WHERE m.deleted_at IS NULL
+            AND ((mp.status IN ('pending','overdue') AND mp.due_date <= ?)
+              OR (mp.status = 'paid' AND mp.paid_date BETWEEN ? AND ?))
+       )
+       ORDER BY
+         CASE status WHEN 'overdue' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END,
+         dueDate ASC`,
     )
     .all(to, from, to, to, from, to);
 };
