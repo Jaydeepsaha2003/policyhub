@@ -22,6 +22,7 @@ import {
   AlertTriangle,
   CalendarClock,
   IndianRupee,
+  LineChart,
   ReceiptText,
   TrendingUp,
 } from 'lucide-react';
@@ -44,6 +45,7 @@ type Overview = {
   from: string;
   to: string;
   totalActivePolicies: number;
+  totalActiveMutualFunds: number;
   premiumsDueInWindow: number;
   premiumsPaidInWindow: number;
   policiesMaturingInWindow: number;
@@ -73,7 +75,11 @@ type Maturing = {
   sumAssured: number;
 };
 
+// Unified row type for the dashboard's "Current month" table. Repo
+// UNIONs premium_payments and mutual_fund_payments — the kind
+// discriminator says which set the policy/MF fields apply to.
 type MonthRow = {
+  kind: 'policy' | 'mutual_fund';
   id: string;
   installmentNo: number;
   dueDate: string;
@@ -81,10 +87,17 @@ type MonthRow = {
   status: 'pending' | 'paid' | 'overdue';
   paidDate: string | null;
   paidAmount: number | null;
-  policyId: string;
-  policyNo: string;
-  policyHolder: string;
-  companyName: string;
+  // Policy fields (null for MF rows).
+  policyId: string | null;
+  policyNo: string | null;
+  policyHolder: string | null;
+  companyName: string | null;
+  // MF fields (null for policy rows).
+  mutualFundId: string | null;
+  folioNo: string | null;
+  accountHolder: string | null;
+  provider: string | null;
+  schemeName: string | null;
 };
 
 const MONTH_PAGE_SIZE = 10;
@@ -102,6 +115,9 @@ export const DashboardPage = () => {
   const [monthPage, setMonthPage] = useState(0);
   const [markPaymentId, setMarkPaymentId] = useState<string | null>(null);
   const [markDefault, setMarkDefault] = useState(0);
+  // The mark-paid dialog needs to know which IPC to call. Default to
+  // 'policy' since that's the most common case.
+  const [markKind, setMarkKind] = useState<'policy' | 'mutual_fund'>('policy');
 
   const load = async () => {
     try {
@@ -191,12 +207,18 @@ export const DashboardPage = () => {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-7">
         <MetricCard
           icon={<Activity className="h-4 w-4 text-primary" />}
           label="Active policies"
           value={overview?.totalActivePolicies ?? '—'}
           description="Currently in force"
+        />
+        <MetricCard
+          icon={<LineChart className="h-4 w-4 text-indigo-500" />}
+          label="Active mutual funds"
+          value={overview?.totalActiveMutualFunds ?? '—'}
+          description="Lumpsum + SIP"
         />
         <MetricCard
           icon={<CalendarClock className="h-4 w-4 text-violet-500" />}
@@ -206,7 +228,7 @@ export const DashboardPage = () => {
         />
         <MetricCard
           icon={<AlertTriangle className="h-4 w-4 text-amber-500" />}
-          label="Premiums due"
+          label="Premiums / SIPs due"
           value={overview?.premiumsDueInWindow ?? '—'}
           description="Pending + overdue"
         />
@@ -215,7 +237,7 @@ export const DashboardPage = () => {
           label="Collected"
           value={overview ? formatCurrencyCompactPaise(overview.collectedInWindow) : '—'}
           fullValue={overview ? formatCurrencyPaise(overview.collectedInWindow) : undefined}
-          description={`${overview?.premiumsPaidInWindow ?? 0} payments`}
+          description={`${overview?.premiumsPaidInWindow ?? 0} installments`}
         />
         <MetricCard
           icon={<IndianRupee className="h-4 w-4 text-red-500" />}
@@ -229,7 +251,7 @@ export const DashboardPage = () => {
           label="GST + late fees"
           value={overview ? formatCurrencyCompactPaise(overview.latePenaltyInWindow) : '—'}
           fullValue={overview ? formatCurrencyPaise(overview.latePenaltyInWindow) : undefined}
-          description="Collected in window"
+          description="Policy fees in window"
         />
       </div>
 
@@ -302,9 +324,10 @@ export const DashboardPage = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Policy</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Policy / Folio</TableHead>
                   <TableHead>Holder</TableHead>
-                  <TableHead>Company</TableHead>
+                  <TableHead>Company / Provider</TableHead>
                   <TableHead>Due date</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
                   <TableHead>Status</TableHead>
@@ -314,19 +337,33 @@ export const DashboardPage = () => {
               <TableBody>
                 {monthPageRows.map((r) => {
                   const isOverdue = r.status === 'overdue' || (r.status !== 'paid' && r.dueDate < today);
+                  const navTarget =
+                    r.kind === 'policy'
+                      ? `/policies/${r.policyId}`
+                      : `/mutual-funds/${r.mutualFundId}`;
+                  const primary = r.kind === 'policy' ? r.policyNo : r.folioNo;
+                  const holder = r.kind === 'policy' ? r.policyHolder : r.accountHolder;
+                  const secondary = r.kind === 'policy' ? r.companyName : r.provider;
                   return (
                     <TableRow
-                      key={r.id}
+                      key={`${r.kind}-${r.id}`}
                       className={
                         isOverdue
                           ? 'cursor-pointer bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-950/60'
                           : 'cursor-pointer'
                       }
-                      onClick={() => navigate(`/policies/${r.policyId}`)}
+                      onClick={() => navigate(navTarget)}
                     >
-                      <TableCell className="font-medium">{r.policyNo}</TableCell>
-                      <TableCell>{r.policyHolder}</TableCell>
-                      <TableCell>{r.companyName}</TableCell>
+                      <TableCell>
+                        {r.kind === 'policy' ? (
+                          <Badge variant="secondary">Policy</Badge>
+                        ) : (
+                          <Badge>Mutual Fund</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="font-medium">{primary}</TableCell>
+                      <TableCell>{holder}</TableCell>
+                      <TableCell>{secondary}</TableCell>
                       <TableCell>{formatDate(r.dueDate)}</TableCell>
                       <TableCell className="text-right tabular-nums">
                         {formatCurrencyPaise(r.expectedAmount)}
@@ -339,6 +376,7 @@ export const DashboardPage = () => {
                             variant="outline"
                             onClick={(e) => {
                               e.stopPropagation();
+                              setMarkKind(r.kind);
                               setMarkDefault(r.expectedAmount / 100);
                               setMarkPaymentId(r.id);
                             }}
@@ -436,6 +474,7 @@ export const DashboardPage = () => {
       <MarkPaidDialog
         paymentId={markPaymentId}
         defaultAmount={markDefault}
+        kind={markKind}
         onClose={() => setMarkPaymentId(null)}
         onSaved={() => load()}
       />
