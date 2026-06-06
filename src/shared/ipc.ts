@@ -65,6 +65,7 @@ export const IPC = {
   mutualFundsRestore: 'mutualFunds:restore',
   mutualFundsPurge: 'mutualFunds:purge',
   mutualFundsExportExcel: 'mutualFunds:exportExcel',
+  mutualFundsAppsScript: 'mutualFunds:appsScript',
   mfPaymentsListByFund: 'mfPayments:listByFund',
   mfPaymentsListAll: 'mfPayments:listAll',
   mfPaymentsMarkPaid: 'mfPayments:markPaid',

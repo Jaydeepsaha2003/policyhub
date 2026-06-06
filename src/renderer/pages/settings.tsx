@@ -563,6 +563,7 @@ export const SettingsPage = () => {
             </Button>
 
             <CalendarAppsScriptButton />
+            <MutualFundAppsScriptButton />
 
             {s.cloudLastSyncedAt && (
               <span className="ml-auto text-xs text-muted-foreground">
@@ -690,14 +691,27 @@ const Field = ({ label, children }: { label: string; children: React.ReactNode }
 // User copies it into the same Apps Script project they set up for
 // policy reminders, then sets up a daily time-driven trigger on the
 // `calendarReminderTick_` function the snippet defines.
-const CalendarAppsScriptButton = () => {
+// Generic Apps Script snippet viewer. Both the Calendar and the MF
+// extension use the same dialog shape — only the label / title /
+// trigger function name and the IPC that fetches the code differ.
+const AppsScriptButton = ({
+  label,
+  title,
+  triggerFn,
+  loader,
+}: {
+  label: string;
+  title: string;
+  triggerFn: string;
+  loader: () => Promise<string>;
+}) => {
   const [code, setCode] = useState('');
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const load = async () => {
     try {
-      const c = await window.policyhub.calendar.appsScript();
+      const c = await loader();
       setCode(c);
     } catch (err) {
       toast.error('Could not load script', { description: (err as Error).message });
@@ -715,18 +729,18 @@ const CalendarAppsScriptButton = () => {
       <DialogTrigger asChild>
         <Button variant="outline">
           <Copy className="h-4 w-4" />
-          Calendar Apps Script extension
+          {label}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Calendar reminders — Apps Script extension</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
             Copy this code and paste it at the bottom of the same Apps Script
             project that already powers your policy reminders. Then redeploy
             (Deploy → Manage deployments → edit → Save) and add a daily
             time-driven trigger on{' '}
-            <span className="font-mono text-xs">calendarReminderTick_</span>.
+            <span className="font-mono text-xs">{triggerFn}</span>.
           </DialogDescription>
         </DialogHeader>
         <div className="relative">
@@ -759,3 +773,21 @@ const CalendarAppsScriptButton = () => {
     </Dialog>
   );
 };
+
+const CalendarAppsScriptButton = () => (
+  <AppsScriptButton
+    label="Calendar Apps Script extension"
+    title="Calendar reminders — Apps Script extension"
+    triggerFn="calendarReminderTick_"
+    loader={() => window.policyhub.calendar.appsScript()}
+  />
+);
+
+const MutualFundAppsScriptButton = () => (
+  <AppsScriptButton
+    label="Mutual Fund Apps Script extension"
+    title="Mutual fund SIP reminders — Apps Script extension"
+    triggerFn="mfSipReminderTick_"
+    loader={() => window.policyhub.mutualFunds.appsScript()}
+  />
+);

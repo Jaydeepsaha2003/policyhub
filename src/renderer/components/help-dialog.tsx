@@ -238,6 +238,20 @@ const MutualFundsHelp = () => (
         single workbook with one sheet per section.
       </p>
     </section>
+    <section>
+      <h3 className="mb-1 font-semibold">Email reminders via Google Sheets</h3>
+      <p className="text-muted-foreground">
+        SIP installments are pushed to two new tabs in your existing cloud
+        sync workbook — <strong>Mutual Funds</strong> and{' '}
+        <strong>MF SIP Payments</strong>. To get reminder emails when a SIP
+        is due, open <strong>Settings → Mutual Fund Apps Script extension</strong>,
+        copy the snippet, paste it at the bottom of your existing Apps Script
+        project, save, and add a daily time-driven trigger on{' '}
+        <span className="font-mono text-xs">mfSipReminderTick_</span>. SIPs
+        share the same offset cadence as your policy reminders (Settings
+        sheet B3), so you configure one schedule for everything.
+      </p>
+    </section>
   </div>
 );
 

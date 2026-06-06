@@ -162,7 +162,50 @@ const buildPayload = () => {
     )
     .all();
 
-  return { policies, installments, repayments, calendarEvents };
+  // Mutual Funds — active funds + their pending/overdue/recently-paid
+  // SIP installments. Separate top-level keys so an older Apps Script
+  // ignores them; the MF extension snippet (see cloud-sync-mf.ts)
+  // teaches the script to consume them.
+  const mutualFunds = sqlite
+    .prepare(
+      `SELECT id, folio_no AS folioNo, account_holder AS accountHolder,
+              provider, scheme_name AS schemeName, type, amount,
+              start_date AS startDate, installment_count AS installmentCount,
+              status, agent_name AS agentName, agent_contact AS agentContact,
+              debit_bank_name AS debitBankName, debit_account_no AS debitAccountNo
+         FROM mutual_funds
+        WHERE status = 'active' AND deleted_at IS NULL
+        ORDER BY account_holder ASC`,
+    )
+    .all();
+
+  const mfInstallments = sqlite
+    .prepare(
+      `SELECT mp.id, m.folio_no AS folioNo, m.account_holder AS accountHolder,
+              m.provider, m.scheme_name AS schemeName, m.type,
+              mp.installment_no AS installmentNo,
+              mp.due_date AS dueDate,
+              mp.expected_amount AS expectedAmount,
+              mp.status,
+              mp.paid_date AS paidDate,
+              mp.paid_amount AS paidAmount
+         FROM mutual_fund_payments mp
+         JOIN mutual_funds m ON m.id = mp.mutual_fund_id
+        WHERE m.deleted_at IS NULL
+          AND (mp.status IN ('pending','overdue')
+               OR (mp.status = 'paid' AND mp.paid_date >= date('now','-90 days')))
+        ORDER BY mp.due_date ASC`,
+    )
+    .all();
+
+  return {
+    policies,
+    installments,
+    repayments,
+    calendarEvents,
+    mutualFunds,
+    mfInstallments,
+  };
 };
 
 // ---- Public API ----
@@ -185,11 +228,20 @@ const send = async (
 
   const payload: Record<string, any> = { kind, secret, source: 'PolicyHub' };
   if (kind === 'sync') {
-    const { policies, installments, repayments, calendarEvents } = buildPayload();
+    const {
+      policies,
+      installments,
+      repayments,
+      calendarEvents,
+      mutualFunds,
+      mfInstallments,
+    } = buildPayload();
     payload.policies = policies;
     payload.installments = installments;
     payload.repayments = repayments;
     payload.calendarEvents = calendarEvents;
+    payload.mutualFunds = mutualFunds;
+    payload.mfInstallments = mfInstallments;
   }
 
   try {

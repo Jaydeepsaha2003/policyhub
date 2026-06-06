@@ -117,6 +117,7 @@ type PolicyHubApi = {
     exportExcel: (opts?: {
       mutualFundIds?: string[];
     }) => Promise<{ saved: boolean; path?: string; rowCount?: number }>;
+    appsScript: () => Promise<string>;
   };
   mfPayments: {
     listByFund: (mutualFundId: string) => Promise<any[]>;

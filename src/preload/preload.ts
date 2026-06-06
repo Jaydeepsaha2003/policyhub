@@ -116,6 +116,7 @@ const api = {
         IPC.mutualFundsExportExcel,
         opts,
       ),
+    appsScript: () => invoke<string>(IPC.mutualFundsAppsScript),
   },
   mfPayments: {
     listByFund: (mutualFundId: string) =>

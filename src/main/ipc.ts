@@ -71,6 +71,7 @@ import {
   updateCalendarEvent,
 } from './repo/calendar-events';
 import { calendarAppsScriptSnippet } from './cloud-sync-calendar';
+import { mfAppsScriptSnippet } from './cloud-sync-mf';
 import { exportCalendarEvents } from './bulk-calendar-export';
 import {
   createCalendarCategory,
@@ -310,6 +311,7 @@ export const registerIpc = () => {
   handle(IPC.mutualFundsExportExcel, (opts?: { mutualFundIds?: string[] }) =>
     exportAllMutualFunds(opts),
   );
+  handle(IPC.mutualFundsAppsScript, () => mfAppsScriptSnippet());
   handle(IPC.mfPaymentsListByFund, (mutualFundId: string) =>
     listMfPaymentsByFund(mutualFundId),
   );
