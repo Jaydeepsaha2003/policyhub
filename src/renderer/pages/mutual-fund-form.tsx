@@ -26,7 +26,13 @@ import { useRouter } from '@/lib/router';
 import { toast } from 'sonner';
 import { isoToday, paiseToRupees } from '@/lib/utils';
 
-type Props = { mode: 'create' } | { mode: 'edit'; id: string };
+// When the form is mounted inline inside the detail page (`mode='edit'`),
+// the detail page passes onSaved so it can flip out of edit mode + reload
+// the installments. Without that callback the form falls back to a route
+// navigation, which is a no-op when the URL is already the detail page.
+type Props =
+  | { mode: 'create' }
+  | { mode: 'edit'; id: string; onSaved?: () => void };
 
 type MfType = 'lumpsum' | 'monthly' | 'quarterly' | 'half_yearly' | 'yearly';
 
@@ -215,7 +221,14 @@ export const MutualFundFormPage = (props: Props) => {
       } else {
         await window.policyhub.mutualFunds.update(props.id, payload, opts);
         toast.success('Mutual fund updated');
-        navigate(`/mutual-funds/${props.id}`);
+        // Prefer the callback so the parent can refresh in place.
+        // Falling back to navigate handles direct visits to the form
+        // (which currently don't exist, but keeps the contract safe).
+        if (props.onSaved) {
+          props.onSaved();
+        } else {
+          navigate(`/mutual-funds/${props.id}`);
+        }
       }
     } catch (err) {
       toast.error('Save failed', { description: (err as Error).message });

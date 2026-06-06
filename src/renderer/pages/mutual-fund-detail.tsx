@@ -92,7 +92,16 @@ export const MutualFundDetailPage = ({ id }: { id: string }) => {
           <ArrowLeft className="h-4 w-4" />
           Back
         </Button>
-        <MutualFundFormPage mode="edit" id={id} />
+        <MutualFundFormPage
+          mode="edit"
+          id={id}
+          onSaved={() => {
+            setEditing(false);
+            // Reload fund + installments so the new frequency / amount /
+            // start date are visible immediately.
+            load();
+          }}
+        />
       </div>
     );
   }
