@@ -690,7 +690,7 @@ const Field = ({ label, children }: { label: string; children: React.ReactNode }
 // Surfaces the Apps Script extension snippet for the Calendar feature.
 // User copies it into the same Apps Script project they set up for
 // policy reminders, then sets up a daily time-driven trigger on the
-// `calendarReminderTick_` function the snippet defines.
+// `calendarReminderTick` function the snippet defines.
 // Generic Apps Script snippet viewer. Both the Calendar and the MF
 // extension use the same dialog shape — only the label / title /
 // trigger function name and the IPC that fetches the code differ.
@@ -778,7 +778,7 @@ const CalendarAppsScriptButton = () => (
   <AppsScriptButton
     label="Calendar Apps Script extension"
     title="Calendar reminders — Apps Script extension"
-    triggerFn="calendarReminderTick_"
+    triggerFn="calendarReminderTick"
     loader={() => window.policyhub.calendar.appsScript()}
   />
 );
@@ -787,7 +787,7 @@ const MutualFundAppsScriptButton = () => (
   <AppsScriptButton
     label="Mutual Fund Apps Script extension"
     title="Mutual fund SIP reminders — Apps Script extension"
-    triggerFn="mfSipReminderTick_"
+    triggerFn="mfSipReminderTick"
     loader={() => window.policyhub.mutualFunds.appsScript()}
   />
 );

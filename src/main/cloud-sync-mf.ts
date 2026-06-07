@@ -4,7 +4,7 @@
 //   1. syncMutualFunds_(funds) — writes/refreshes a "Mutual Funds" tab.
 //   2. syncMfInstallments_(installments) — writes/refreshes a "MF SIP
 //      Payments" tab with every active fund's installments.
-//   3. mfSipReminderTick_() — daily-trigger entry point that reads the
+//   3. mfSipReminderTick() — daily-trigger entry point that reads the
 //      MF SIP Payments tab and emails reminders for installments due
 //      within the configured offsets. Uses the SAME reminder_offsets_days
 //      array stored in the Settings sheet (B3 — the existing policy
@@ -20,7 +20,7 @@ export const mfAppsScriptSnippet = (): string => /* javascript */ `
 // What it adds:
 //   • A "Mutual Funds" tab written on every sync.
 //   • A "MF SIP Payments" tab written on every sync.
-//   • A daily mfSipReminderTick_ trigger that emails reminders for
+//   • A daily mfSipReminderTick trigger that emails reminders for
 //     upcoming SIP installments. Reuses the offsets from the existing
 //     "Settings" sheet so policies and SIPs share one cadence.
 //
@@ -110,7 +110,7 @@ function writeMfInstallmentsHeader_(sh) {
 
 /**
  * Daily trigger for MF SIP reminders. Set up a Time-driven trigger
- * (Apps Script → Triggers → Add → "mfSipReminderTick_", Day-timer).
+ * (Apps Script → Triggers → Add → "mfSipReminderTick", Day-timer).
  *
  * For every pending or overdue SIP whose due_date is within an offset
  * window listed in Settings (cell B3, the existing policy offsets),
@@ -119,7 +119,7 @@ function writeMfInstallmentsHeader_(sh) {
  * Idempotent — same row + same days-before pair doesn't email twice
  * in one day. Tracking lives in a hidden "MF SIP Reminder Log" sheet.
  */
-function mfSipReminderTick_() {
+function mfSipReminderTick() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = ss.getSheetByName('MF SIP Payments');
   if (!sh) return;
@@ -169,7 +169,7 @@ function mfSipReminderTick_() {
     const daysAway = Math.round((dueDate - today) / (24 * 60 * 60 * 1000));
     // Only fire on positive offset matches (future). Overdue handling
     // is separate — let the policy-style overdue cadence cover that
-    // if you want it; mfSipReminderTick_ is forward-looking.
+    // if you want it; mfSipReminderTick is forward-looking.
     if (daysAway < 0) continue;
     if (offsets.indexOf(daysAway) === -1) continue;
 
@@ -255,7 +255,7 @@ function getMfReminderOffsets_() {
 //       counts.mfInstallments = out2.mfInstallments;
 //     }
 //
-// Then set up a daily trigger on \`mfSipReminderTick_\` (Apps Script →
+// Then set up a daily trigger on \`mfSipReminderTick\` (Apps Script →
 // Triggers → Add → choose function, type "Time-driven", "Day timer",
 // any hour you prefer). Reminders will fire for any SIP whose due
 // date matches one of the offset windows configured in Settings!B3.

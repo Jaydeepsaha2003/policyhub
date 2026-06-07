@@ -247,7 +247,7 @@ const MutualFundsHelp = () => (
         is due, open <strong>Settings → Mutual Fund Apps Script extension</strong>,
         copy the snippet, paste it at the bottom of your existing Apps Script
         project, save, and add a daily time-driven trigger on{' '}
-        <span className="font-mono text-xs">mfSipReminderTick_</span>. SIPs
+        <span className="font-mono text-xs">mfSipReminderTick</span>. SIPs
         share the same offset cadence as your policy reminders (Settings
         sheet B3), so you configure one schedule for everything.
       </p>
@@ -301,7 +301,7 @@ const CalendarHelp = () => (
         <strong>Calendar Apps Script extension</strong>, copy the snippet,
         paste it at the bottom of your existing Apps Script project, save,
         and add a daily time-driven trigger on{' '}
-        <span className="font-mono text-xs">calendarReminderTick_</span>.
+        <span className="font-mono text-xs">calendarReminderTick</span>.
         Policies / payments / repayments sync continues unchanged.
       </p>
     </section>

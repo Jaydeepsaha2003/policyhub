@@ -86,7 +86,7 @@ function writeCalendarHeader_(sh) {
 
 /**
  * Daily trigger entry-point for calendar reminders. Set up a Time-driven
- * trigger (Apps Script → Triggers → Add → "calendarReminderTick_",
+ * trigger (Apps Script → Triggers → Add → "calendarReminderTick",
  * Day-timer, e.g. 8am).
  *
  * For each pending event whose (event_date - today) matches one of its
@@ -94,7 +94,7 @@ function writeCalendarHeader_(sh) {
  * in the "Settings" sheet (cell B2 = recipient email, reused from the
  * existing policy reminders).
  */
-function calendarReminderTick_() {
+function calendarReminderTick() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = ss.getSheetByName('Calendar Events');
   if (!sh) return;
@@ -203,7 +203,7 @@ function getReminderRecipient_() {
 //       counts.calendarEvents = out.calendarEvents;
 //     }
 //
-// Then set up a daily trigger on \`calendarReminderTick_\` (Apps Script →
+// Then set up a daily trigger on \`calendarReminderTick\` (Apps Script →
 // Triggers → Add → choose function, type "Time-driven", "Day timer", any
 // hour you prefer).
 // =====================================================================
