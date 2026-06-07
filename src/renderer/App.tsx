@@ -83,7 +83,11 @@ const Shell = ({ onSetupComplete }: { onSetupComplete: () => void }) => {
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar sidebarCollapsed={collapsed} onToggleSidebar={toggle} />
         <main className="flex-1 overflow-auto bg-background">
-          <div className="mx-auto w-full max-w-7xl p-6">
+          {/* Full-width content. The previous max-w-7xl (1280px) cap
+              made wide tables (Payments, Policies, MFs) look cramped
+              on big monitors. Removed; pages now fill the available
+              viewport between the sidebar and the right edge. */}
+          <div className="mx-auto w-full p-6">
             <PageSwitch />
           </div>
         </main>

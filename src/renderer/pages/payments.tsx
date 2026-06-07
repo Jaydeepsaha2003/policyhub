@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { DateInputDMY } from '@/components/ui/date-input-dmy';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableEmpty } from '@/components/ui/table';
@@ -20,6 +19,7 @@ import { toast } from 'sonner';
 import { MarkPaidDialog } from './mark-paid-dialog';
 import { EditPaymentDialog, type EditablePayment } from './edit-payment-dialog';
 import { useRouter } from '@/lib/router';
+import { MultiSelectFilter } from '@/components/multi-select-filter';
 
 type Row = {
   id: string;
@@ -78,15 +78,19 @@ const statusBadge = (s: 'pending' | 'paid' | 'overdue') =>
 export const PaymentsPage = () => {
   const { navigate } = useRouter();
   // Filters are persisted in sessionStorage under this key so that
-  // navigating to a row's detail page and coming back doesn't reset the
-  // view. Cleared by the "Clear filters" button.
+  // navigating to a row's detail page and coming back doesn't reset
+  // the view. Cleared by the "Clear filters" button.
+  //
+  // Each filter is a string[] — empty array means "no filter" (every
+  // row passes); a populated array means "only these values pass".
+  // This lets the user multi-select via checkboxes per dropdown.
   const FILTERS_KEY = 'payments.filters';
   type StoredFilters = {
-    status?: string;
-    policyId?: string;
-    companyFilter?: string;
-    holderFilter?: string;
-    typeFilter?: string;
+    statuses?: string[];
+    types?: string[];
+    companies?: string[];
+    holders?: string[];
+    policyIds?: string[];
     from?: string;
     to?: string;
   };
@@ -103,15 +107,11 @@ export const PaymentsPage = () => {
   const [rows, setRows] = useState<Row[]>([]);
   const [mfRows, setMfRows] = useState<MfRow[]>([]);
   const [policies, setPolicies] = useState<PolicyLite[]>([]);
-  const [status, setStatus] = useState<string>(stored.status ?? 'all');
-  const [policyId, setPolicyId] = useState<string>(stored.policyId ?? 'all');
-  const [companyFilter, setCompanyFilter] = useState<string>(
-    stored.companyFilter ?? 'all',
-  );
-  const [holderFilter, setHolderFilter] = useState<string>(
-    stored.holderFilter ?? 'all',
-  );
-  const [typeFilter, setTypeFilter] = useState<string>(stored.typeFilter ?? 'all');
+  const [statuses, setStatuses] = useState<string[]>(stored.statuses ?? []);
+  const [types, setTypes] = useState<string[]>(stored.types ?? []);
+  const [companiesSel, setCompaniesSel] = useState<string[]>(stored.companies ?? []);
+  const [holdersSel, setHoldersSel] = useState<string[]>(stored.holders ?? []);
+  const [policyIds, setPolicyIds] = useState<string[]>(stored.policyIds ?? []);
   const [from, setFrom] = useState(stored.from ?? '');
   const [to, setTo] = useState(stored.to ?? '');
 
@@ -123,11 +123,11 @@ export const PaymentsPage = () => {
       sessionStorage.setItem(
         FILTERS_KEY,
         JSON.stringify({
-          status,
-          policyId,
-          companyFilter,
-          holderFilter,
-          typeFilter,
+          statuses,
+          types,
+          companies: companiesSel,
+          holders: holdersSel,
+          policyIds,
           from,
           to,
         }),
@@ -135,7 +135,7 @@ export const PaymentsPage = () => {
     } catch {
       /* ignore */
     }
-  }, [status, policyId, companyFilter, holderFilter, typeFilter, from, to]);
+  }, [statuses, types, companiesSel, holdersSel, policyIds, from, to]);
   const [markId, setMarkId] = useState<string | null>(null);
   const [markKind, setMarkKind] = useState<'policy' | 'mutual_fund'>('policy');
   const [markDefault, setMarkDefault] = useState(0);
@@ -144,6 +144,10 @@ export const PaymentsPage = () => {
     accountNo: string | null;
   }>({ bank: null, accountNo: null });
   const [editRow, setEditRow] = useState<EditablePayment | null>(null);
+  // Tracks whether the row currently being edited is a policy or MF
+  // installment so the dialog routes to the right IPC + hides
+  // GST/late-fee fields when MF.
+  const [editKind, setEditKind] = useState<'policy' | 'mutual_fund'>('policy');
   const [downloading, setDownloading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{
@@ -240,29 +244,38 @@ export const PaymentsPage = () => {
   // Dimension names used by `matches` to skip the filter being computed.
   type FilterDim =
     | 'status'
-    | 'typeFilter'
-    | 'companyFilter'
-    | 'holderFilter'
+    | 'type'
+    | 'company'
+    | 'holder'
     | 'policyId'
     | 'dates';
 
+  // Each filter is now a string[] (multi-select). Empty array = no
+  // filter applied. matches() returns true if the row passes every
+  // filter EXCEPT the one named in `except` — used to compute the
+  // option list each dropdown should show (Excel-style narrowing).
   const matches = (r: FilterRow, except: FilterDim | null): boolean => {
-    if (except !== 'status' && status !== 'all' && r.status !== status) return false;
-    if (except !== 'typeFilter' && typeFilter !== 'all' && r.kind !== typeFilter)
+    if (except !== 'status' && statuses.length > 0 && !statuses.includes(r.status))
+      return false;
+    if (except !== 'type' && types.length > 0 && !types.includes(r.kind))
       return false;
     if (
-      except !== 'companyFilter' &&
-      companyFilter !== 'all' &&
-      r.company !== companyFilter
+      except !== 'company' &&
+      companiesSel.length > 0 &&
+      !companiesSel.includes(r.company)
     )
       return false;
     if (
-      except !== 'holderFilter' &&
-      holderFilter !== 'all' &&
-      r.holder !== holderFilter
+      except !== 'holder' &&
+      holdersSel.length > 0 &&
+      !holdersSel.includes(r.holder)
     )
       return false;
-    if (except !== 'policyId' && policyId !== 'all' && r.policyId !== policyId)
+    if (
+      except !== 'policyId' &&
+      policyIds.length > 0 &&
+      (!r.policyId || !policyIds.includes(r.policyId))
+    )
       return false;
     if (except !== 'dates') {
       if (from && r.dueDate < from) return false;
@@ -275,38 +288,36 @@ export const PaymentsPage = () => {
     Array.from(new Set(xs.filter((x) => x !== ''))).sort();
 
   // Each dropdown's available values: filterRows narrowed by every
-  // OTHER active filter, then collected.
+  // OTHER active filter, then collected. Used as the option set the
+  // checkbox dropdown shows.
   const statusOptions = useMemo(
     () => uniq(filterRows.filter((r) => matches(r, 'status')).map((r) => r.status)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [filterRows, typeFilter, companyFilter, holderFilter, policyId, from, to],
+    [filterRows, types, companiesSel, holdersSel, policyIds, from, to],
   );
-  const typeHasPolicy = useMemo(
-    () => filterRows.some((r) => r.kind === 'policy' && matches(r, 'typeFilter')),
+  const typeOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of filterRows) {
+      if (matches(r, 'type')) set.add(r.kind);
+    }
+    return Array.from(set);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [filterRows, status, companyFilter, holderFilter, policyId, from, to],
-  );
-  const typeHasMf = useMemo(
-    () =>
-      filterRows.some((r) => r.kind === 'mutual_fund' && matches(r, 'typeFilter')),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [filterRows, status, companyFilter, holderFilter, policyId, from, to],
-  );
+  }, [filterRows, statuses, companiesSel, holdersSel, policyIds, from, to]);
   const companies = useMemo(
     () =>
       uniq(
-        filterRows.filter((r) => matches(r, 'companyFilter')).map((r) => r.company),
+        filterRows.filter((r) => matches(r, 'company')).map((r) => r.company),
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [filterRows, status, typeFilter, holderFilter, policyId, from, to],
+    [filterRows, statuses, types, holdersSel, policyIds, from, to],
   );
   const holders = useMemo(
     () =>
       uniq(
-        filterRows.filter((r) => matches(r, 'holderFilter')).map((r) => r.holder),
+        filterRows.filter((r) => matches(r, 'holder')).map((r) => r.holder),
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [filterRows, status, typeFilter, companyFilter, policyId, from, to],
+    [filterRows, statuses, types, companiesSel, policyIds, from, to],
   );
   // Visible policies for the Policy dropdown — narrowed by every other
   // active filter. MF rows have policyId=null so they're naturally
@@ -319,42 +330,50 @@ export const PaymentsPage = () => {
           .map((r) => r.policyId as string),
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [filterRows, status, typeFilter, companyFilter, holderFilter, from, to],
+    [filterRows, statuses, types, companiesSel, holdersSel, from, to],
   );
 
-  // Defensive auto-reset: when an active filter selection no longer
-  // matches anything in the dataset (because *other* filters narrowed
-  // it out), snap back to 'all' so the table doesn't go silently empty.
+  // Defensive auto-reset: drop selected values that are no longer in
+  // the dataset (because *other* filters narrowed them out). Prevents
+  // the table from going silently empty due to stale selections.
+  //
+  // IMPORTANT: skip until the first data load is complete. On mount
+  // we restore filters from sessionStorage *synchronously* but the
+  // dataset itself loads asynchronously — without this guard, the
+  // option arrays start empty and the auto-reset wipes the restored
+  // filters before the data ever arrives.
+  const dataLoaded = filterRows.length > 0;
+  const pruneTo = (
+    selected: string[],
+    valid: string[] | Set<string>,
+    setter: (next: string[]) => void,
+  ) => {
+    if (selected.length === 0) return;
+    const validSet = Array.isArray(valid) ? new Set(valid) : valid;
+    const kept = selected.filter((v) => validSet.has(v));
+    if (kept.length !== selected.length) setter(kept);
+  };
+
   useEffect(() => {
-    if (companyFilter !== 'all' && !companies.includes(companyFilter)) {
-      setCompanyFilter('all');
-    }
-  }, [companies, companyFilter]);
+    if (!dataLoaded) return;
+    pruneTo(companiesSel, companies, setCompaniesSel);
+  }, [companies, companiesSel, dataLoaded]);
   useEffect(() => {
-    if (holderFilter !== 'all' && !holders.includes(holderFilter)) {
-      setHolderFilter('all');
-    }
-  }, [holders, holderFilter]);
+    if (!dataLoaded) return;
+    pruneTo(holdersSel, holders, setHoldersSel);
+  }, [holders, holdersSel, dataLoaded]);
   useEffect(() => {
-    if (status !== 'all' && !statusOptions.includes(status)) {
-      setStatus('all');
-    }
-  }, [statusOptions, status]);
+    if (!dataLoaded) return;
+    pruneTo(statuses, statusOptions, setStatuses);
+  }, [statusOptions, statuses, dataLoaded]);
   useEffect(() => {
-    if (typeFilter === 'policy' && !typeHasPolicy) setTypeFilter('all');
-    if (typeFilter === 'mutual_fund' && !typeHasMf) setTypeFilter('all');
-  }, [typeFilter, typeHasPolicy, typeHasMf]);
-  // Specific Policy ID filter is meaningless when MF Only is selected,
-  // and when other filters narrow it out of the visible set.
+    if (!dataLoaded) return;
+    pruneTo(types, typeOptions, setTypes);
+  }, [typeOptions, types, dataLoaded]);
   useEffect(() => {
-    if (typeFilter === 'mutual_fund' && policyId !== 'all') {
-      setPolicyId('all');
-      return;
-    }
-    if (policyId !== 'all' && !policyOptionIds.has(policyId)) {
-      setPolicyId('all');
-    }
-  }, [typeFilter, policyId, policyOptionIds]);
+    if (!dataLoaded) return;
+    pruneTo(policyIds, policyOptionIds, setPolicyIds);
+  }, [policyOptionIds, policyIds, dataLoaded]);
 
   // Unified list with kind discriminator. Filters apply across both
   // sources. Sort by due date ASC so the oldest installment is at the
@@ -368,36 +387,52 @@ export const PaymentsPage = () => {
   const todayIso = new Date().toISOString().slice(0, 10);
   // All filtering happens here now — server returns the full dataset
   // and we apply status/type/company/holder/policy/date narrowing on
-  // top of the defensive overdue-flip.
+  // top of the defensive overdue-flip. Each filter is a string[];
+  // empty array means "no filter — everything passes".
   const filtered = useMemo<UnifiedRow[]>(() => {
     const out: UnifiedRow[] = [];
     const dateMatches = (due: string): boolean =>
       (!from || due >= from) && (!to || due <= to);
+    const wantPolicy = types.length === 0 || types.includes('policy');
+    const wantMf = types.length === 0 || types.includes('mutual_fund');
 
-    if (typeFilter !== 'mutual_fund') {
+    if (wantPolicy) {
       for (const r of rows) {
         const p = policyMap.get(r.policyId);
-        if (companyFilter !== 'all' && p?.companyName !== companyFilter) continue;
-        if (holderFilter !== 'all' && p?.policyHolder !== holderFilter) continue;
-        if (policyId !== 'all' && r.policyId !== policyId) continue;
+        if (
+          companiesSel.length > 0 &&
+          (!p || !companiesSel.includes(p.companyName))
+        )
+          continue;
+        if (
+          holdersSel.length > 0 &&
+          (!p || !holdersSel.includes(p.policyHolder))
+        )
+          continue;
+        if (policyIds.length > 0 && !policyIds.includes(r.policyId)) continue;
         if (!dateMatches(r.dueDate)) continue;
         const effStatus =
           r.status === 'pending' && r.dueDate < todayIso ? 'overdue' : r.status;
-        if (status !== 'all' && effStatus !== status) continue;
+        if (statuses.length > 0 && !statuses.includes(effStatus)) continue;
         out.push({ kind: 'policy', ...r, status: effStatus });
       }
     }
-    if (typeFilter !== 'policy') {
-      for (const m of mfRows) {
-        if (companyFilter !== 'all' && m.provider !== companyFilter) continue;
-        if (holderFilter !== 'all' && m.accountHolder !== holderFilter) continue;
-        // A specific policyId filter excludes all MF rows.
-        if (policyId !== 'all') continue;
-        if (!dateMatches(m.dueDate)) continue;
-        const effStatus =
-          m.status === 'pending' && m.dueDate < todayIso ? 'overdue' : m.status;
-        if (status !== 'all' && effStatus !== status) continue;
-        out.push({ kind: 'mutual_fund', ...m, status: effStatus });
+    if (wantMf) {
+      // A specific policyId selection excludes all MF rows (they have
+      // no policyId).
+      const policySelected = policyIds.length > 0;
+      if (!policySelected) {
+        for (const m of mfRows) {
+          if (companiesSel.length > 0 && !companiesSel.includes(m.provider))
+            continue;
+          if (holdersSel.length > 0 && !holdersSel.includes(m.accountHolder))
+            continue;
+          if (!dateMatches(m.dueDate)) continue;
+          const effStatus =
+            m.status === 'pending' && m.dueDate < todayIso ? 'overdue' : m.status;
+          if (statuses.length > 0 && !statuses.includes(effStatus)) continue;
+          out.push({ kind: 'mutual_fund', ...m, status: effStatus });
+        }
       }
     }
     out.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
@@ -406,31 +441,31 @@ export const PaymentsPage = () => {
     rows,
     mfRows,
     policyMap,
-    status,
-    typeFilter,
-    companyFilter,
-    holderFilter,
-    policyId,
+    statuses,
+    types,
+    companiesSel,
+    holdersSel,
+    policyIds,
     from,
     to,
     todayIso,
   ]);
 
   const anyFilterActive =
-    status !== 'all' ||
-    policyId !== 'all' ||
-    companyFilter !== 'all' ||
-    holderFilter !== 'all' ||
-    typeFilter !== 'all' ||
+    statuses.length > 0 ||
+    types.length > 0 ||
+    companiesSel.length > 0 ||
+    holdersSel.length > 0 ||
+    policyIds.length > 0 ||
     Boolean(from) ||
     Boolean(to);
 
   const clearFilters = () => {
-    setStatus('all');
-    setPolicyId('all');
-    setCompanyFilter('all');
-    setHolderFilter('all');
-    setTypeFilter('all');
+    setStatuses([]);
+    setTypes([]);
+    setCompaniesSel([]);
+    setHoldersSel([]);
+    setPolicyIds([]);
     setFrom('');
     setTo('');
     try {
@@ -579,86 +614,74 @@ export const PaymentsPage = () => {
     <div className="space-y-4">
       <Card>
         <CardContent className="flex flex-wrap items-center gap-3 p-4">
-          <Select value={status} onValueChange={setStatus}>
-            <SelectTrigger className="w-36">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All status</SelectItem>
-              {statusOptions.includes('pending') && (
-                <SelectItem value="pending">Pending</SelectItem>
-              )}
-              {statusOptions.includes('overdue') && (
-                <SelectItem value="overdue">Overdue</SelectItem>
-              )}
-              {statusOptions.includes('paid') && (
-                <SelectItem value="paid">Paid</SelectItem>
-              )}
-            </SelectContent>
-          </Select>
+          <MultiSelectFilter
+            title="Status"
+            emptyLabel="All status"
+            triggerClassName="w-36"
+            options={[
+              { value: 'pending', label: 'Pending' },
+              { value: 'overdue', label: 'Overdue' },
+              { value: 'paid', label: 'Paid' },
+            ].filter((o) => statusOptions.includes(o.value))}
+            selected={statuses}
+            onChange={setStatuses}
+          />
 
-          <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger className="w-32">
-              <SelectValue placeholder="Type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Policy + MF</SelectItem>
-              {typeHasPolicy && <SelectItem value="policy">Policy only</SelectItem>}
-              {typeHasMf && <SelectItem value="mutual_fund">MF only</SelectItem>}
-            </SelectContent>
-          </Select>
+          <MultiSelectFilter
+            title="Type"
+            emptyLabel="Policy + MF"
+            triggerClassName="w-36"
+            options={[
+              { value: 'policy', label: 'Policy' },
+              { value: 'mutual_fund', label: 'Mutual fund' },
+            ].filter((o) => typeOptions.includes(o.value))}
+            selected={types}
+            onChange={setTypes}
+          />
 
-          <Select value={companyFilter} onValueChange={(v) => { setCompanyFilter(v); setHolderFilter('all'); }}>
-            <SelectTrigger className="w-44">
-              <SelectValue
-                placeholder={
-                  typeFilter === 'mutual_fund' ? 'Provider' : 'Company'
-                }
-              />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">
-                {typeFilter === 'mutual_fund'
-                  ? 'All providers'
-                  : typeFilter === 'policy'
-                    ? 'All companies'
-                    : 'All companies / providers'}
-              </SelectItem>
-              {companies.map((c) => (
-                <SelectItem key={c} value={c}>{c}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <MultiSelectFilter
+            title={
+              types.length === 1 && types[0] === 'mutual_fund'
+                ? 'Provider'
+                : 'Company / Provider'
+            }
+            emptyLabel={
+              types.length === 1 && types[0] === 'mutual_fund'
+                ? 'All providers'
+                : types.length === 1 && types[0] === 'policy'
+                  ? 'All companies'
+                  : 'All companies'
+            }
+            triggerClassName="w-48"
+            options={companies.map((c) => ({ value: c, label: c }))}
+            selected={companiesSel}
+            onChange={setCompaniesSel}
+          />
 
-          <Select value={holderFilter} onValueChange={setHolderFilter}>
-            <SelectTrigger className="w-44">
-              <SelectValue placeholder="Holder" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All holders</SelectItem>
-              {holders.map((h) => (
-                <SelectItem key={h} value={h}>{h}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <MultiSelectFilter
+            title="Holder"
+            emptyLabel="All holders"
+            triggerClassName="w-48"
+            options={holders.map((h) => ({ value: h, label: h }))}
+            selected={holdersSel}
+            onChange={setHoldersSel}
+          />
 
-          {/* Hidden when Type = MF Only since policies don't apply. */}
-          {typeFilter !== 'mutual_fund' && (
-            <Select value={policyId} onValueChange={setPolicyId}>
-              <SelectTrigger className="w-64">
-                <SelectValue placeholder="Policy" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All policies</SelectItem>
-                {policies
-                  .filter((p) => policyOptionIds.has(p.id))
-                  .map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.policyNo} — {p.policyHolder}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
+          {/* Hidden when MF Only is the sole type since policies don't apply. */}
+          {!(types.length === 1 && types[0] === 'mutual_fund') && (
+            <MultiSelectFilter
+              title="Policy"
+              emptyLabel="All policies"
+              triggerClassName="w-64"
+              options={policies
+                .filter((p) => policyOptionIds.has(p.id))
+                .map((p) => ({
+                  value: p.id,
+                  label: `${p.policyNo} — ${p.policyHolder}`,
+                }))}
+              selected={policyIds}
+              onChange={setPolicyIds}
+            />
           )}
 
           <DateInputDMY
@@ -751,11 +774,23 @@ export const PaymentsPage = () => {
           {filtered.length === 0 ? (
             <TableEmpty>No payments match these filters.</TableEmpty>
           ) : (
-            // Horizontal scroll for the extra columns; vertical scroll
-            // for long result sets so the table doesn't grow the page
-            // arbitrarily.
-            <div className="max-h-[65vh] overflow-auto">
-            <Table>
+            // Single scroll container — pass max-h to the Table's own
+            // wrapper so the horizontal scrollbar always sits at the
+            // bottom of the visible viewport (not at the bottom of the
+            // table's natural height, which would be off-screen for
+            // long result sets).
+            //
+            // [&_td]:whitespace-nowrap → every cell stays on one line so
+            //   long values like "HDFC Bank · …1234" don't wrap and
+            //   bloat row height.
+            // [&_th]:whitespace-nowrap → same for headers.
+            // The action column at the right edge is sticky so Mark paid
+            // / Edit are always visible regardless of horizontal scroll —
+            // see the right-0 + shadow classes on that header + cell.
+            <Table
+              wrapperClassName="max-h-[65vh]"
+              className="[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap"
+            >
               <TableHeader>
                 <TableRow>
                   <TableHead>Type</TableHead>
@@ -770,8 +805,8 @@ export const PaymentsPage = () => {
                   <TableHead>Source</TableHead>
                   <TableHead>Ref no</TableHead>
                   <TableHead className="text-right">GST + late fee</TableHead>
-                  <TableHead className="text-right" />
                   <TableHead>Company / Provider</TableHead>
+                  <TableHead className="sticky right-0 z-10 bg-background text-right shadow-[-6px_0_8px_-4px_rgba(0,0,0,0.08)] dark:shadow-[-6px_0_8px_-4px_rgba(0,0,0,0.5)]" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -835,9 +870,26 @@ export const PaymentsPage = () => {
                             <span className="text-muted-foreground">—</span>
                           )}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell>
+                          {p?.companyName ?? (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="sticky right-0 z-10 bg-background text-right shadow-[-6px_0_8px_-4px_rgba(0,0,0,0.08)] dark:shadow-[-6px_0_8px_-4px_rgba(0,0,0,0.5)]">
                           <div className="flex items-center justify-end gap-1">
-                            {r.status !== 'paid' && (
+                            {r.status === 'paid' ? (
+                              // Already paid — show the button disabled so
+                              // the column width stays steady across rows.
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled
+                                className="opacity-40"
+                                title="Already paid"
+                              >
+                                Mark paid
+                              </Button>
+                            ) : (
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -857,6 +909,7 @@ export const PaymentsPage = () => {
                               title="Edit payment"
                               onClick={(e) => {
                                 e.stopPropagation();
+                                setEditKind('policy');
                                 setEditRow({
                                   id: r.id,
                                   installmentNo: r.installmentNo,
@@ -878,11 +931,6 @@ export const PaymentsPage = () => {
                               <Pencil className="h-4 w-4" />
                             </Button>
                           </div>
-                        </TableCell>
-                        <TableCell>
-                          {p?.companyName ?? (
-                            <span className="text-muted-foreground">—</span>
-                          )}
                         </TableCell>
                       </TableRow>
                     );
@@ -931,33 +979,73 @@ export const PaymentsPage = () => {
                         {r.receiptNo || <span className="text-muted-foreground">—</span>}
                       </TableCell>
                       <TableCell className="text-right text-muted-foreground">—</TableCell>
-                      <TableCell className="text-right">
-                        {r.status !== 'paid' && (
+                      <TableCell>{r.provider}</TableCell>
+                      <TableCell className="sticky right-0 z-10 bg-background text-right shadow-[-6px_0_8px_-4px_rgba(0,0,0,0.08)] dark:shadow-[-6px_0_8px_-4px_rgba(0,0,0,0.5)]">
+                        <div className="flex items-center justify-end gap-1">
+                          {r.status === 'paid' ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled
+                              className="opacity-40"
+                              title="Already paid"
+                            >
+                              Mark paid
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setMarkKind('mutual_fund');
+                                setMarkDefault(r.expectedAmount / 100);
+                                setMarkDebit({
+                                  bank: r.debitBankName,
+                                  accountNo: r.debitAccountNo,
+                                });
+                                setMarkId(r.id);
+                              }}
+                            >
+                              Mark paid
+                            </Button>
+                          )}
                           <Button
-                            size="sm"
-                            variant="outline"
+                            size="icon"
+                            variant="ghost"
+                            title="Edit SIP installment"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setMarkKind('mutual_fund');
-                              setMarkDefault(r.expectedAmount / 100);
-                              setMarkDebit({
-                                bank: r.debitBankName,
-                                accountNo: r.debitAccountNo,
+                              setEditKind('mutual_fund');
+                              // MF rows don't carry GST/late fee; pass 0
+                              // so the EditablePayment shape stays valid.
+                              setEditRow({
+                                id: r.id,
+                                installmentNo: r.installmentNo,
+                                dueDate: r.dueDate,
+                                expectedAmount: r.expectedAmount,
+                                status: r.status,
+                                paidDate: r.paidDate,
+                                paidAmount: r.paidAmount,
+                                paymentMethod: r.paymentMethod,
+                                paymentSource: r.paymentSource,
+                                paymentSourceName: r.paymentSourceName,
+                                receiptNo: r.receiptNo,
+                                penaltyAmount: 0,
+                                lateFee: 0,
+                                notes: null,
                               });
-                              setMarkId(r.id);
                             }}
                           >
-                            Mark paid
+                            <Pencil className="h-4 w-4" />
                           </Button>
-                        )}
+                        </div>
                       </TableCell>
-                      <TableCell>{r.provider}</TableCell>
                     </TableRow>
                   );
                 })}
               </TableBody>
             </Table>
-            </div>
           )}
         </CardContent>
       </Card>
@@ -973,6 +1061,7 @@ export const PaymentsPage = () => {
       />
       <EditPaymentDialog
         payment={editRow}
+        kind={editKind}
         onClose={() => setEditRow(null)}
         onSaved={() => load()}
       />

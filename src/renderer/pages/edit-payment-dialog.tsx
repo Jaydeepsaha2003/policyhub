@@ -43,10 +43,15 @@ export type EditablePayment = {
 
 export const EditPaymentDialog = ({
   payment,
+  kind = 'policy',
   onClose,
   onSaved,
 }: {
   payment: EditablePayment | null;
+  // 'policy' (default) — routes to payments.update with full GST/late
+  // fee fields. 'mutual_fund' — routes to mfPayments.update; the
+  // GST/late fee inputs are hidden because MF SIPs don't carry them.
+  kind?: 'policy' | 'mutual_fund';
   onClose: () => void;
   onSaved: () => void;
 }) => {
@@ -110,34 +115,55 @@ export const EditPaymentDialog = ({
         return;
       }
     }
-    const pen = Number(penalty);
-    if (!Number.isFinite(pen) || pen < 0) {
-      toast.error('GST cannot be negative');
-      return;
-    }
-    const lf = Number(lateFee);
-    if (!Number.isFinite(lf) || lf < 0) {
-      toast.error('Late fee cannot be negative');
-      return;
+    // GST + late fee only apply to policy rows.
+    let pen = 0;
+    let lf = 0;
+    if (kind === 'policy') {
+      pen = Number(penalty);
+      if (!Number.isFinite(pen) || pen < 0) {
+        toast.error('GST cannot be negative');
+        return;
+      }
+      lf = Number(lateFee);
+      if (!Number.isFinite(lf) || lf < 0) {
+        toast.error('Late fee cannot be negative');
+        return;
+      }
     }
 
     setSaving(true);
     try {
-      await window.policyhub.payments.update({
-        id: payment.id,
-        status,
-        dueDate,
-        expectedAmount: ea,
-        paidDate: status === 'paid' ? paidDate : null,
-        paidAmount: status === 'paid' ? Number(paidAmount) : null,
-        paymentMethod: status === 'paid' ? paymentMethod : null,
-        paymentSource: status === 'paid' ? paymentSource : null,
-        paymentSourceName: status === 'paid' ? paymentSourceName || null : null,
-        receiptNo: status === 'paid' ? receiptNo || null : null,
-        penaltyAmount: pen,
-        lateFee: lf,
-        notes: notes || null,
-      });
+      if (kind === 'mutual_fund') {
+        await window.policyhub.mfPayments.update({
+          id: payment.id,
+          status,
+          dueDate,
+          expectedAmount: ea,
+          paidDate: status === 'paid' ? paidDate : null,
+          paidAmount: status === 'paid' ? Number(paidAmount) : null,
+          paymentMethod: status === 'paid' ? paymentMethod : null,
+          paymentSource: status === 'paid' ? paymentSource : null,
+          paymentSourceName: status === 'paid' ? paymentSourceName || null : null,
+          receiptNo: status === 'paid' ? receiptNo || null : null,
+          notes: notes || null,
+        });
+      } else {
+        await window.policyhub.payments.update({
+          id: payment.id,
+          status,
+          dueDate,
+          expectedAmount: ea,
+          paidDate: status === 'paid' ? paidDate : null,
+          paidAmount: status === 'paid' ? Number(paidAmount) : null,
+          paymentMethod: status === 'paid' ? paymentMethod : null,
+          paymentSource: status === 'paid' ? paymentSource : null,
+          paymentSourceName: status === 'paid' ? paymentSourceName || null : null,
+          receiptNo: status === 'paid' ? receiptNo || null : null,
+          penaltyAmount: pen,
+          lateFee: lf,
+          notes: notes || null,
+        });
+      }
       toast.success('Payment updated');
       onSaved();
       onClose();
@@ -256,24 +282,28 @@ export const EditPaymentDialog = ({
               </div>
             </>
           )}
-          <div className="space-y-1.5">
-            <Label>GST (₹)</Label>
-            <Input
-              type="number"
-              step="0.01"
-              value={penalty}
-              onChange={(e) => setPenalty(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Late fee (₹)</Label>
-            <Input
-              type="number"
-              step="0.01"
-              value={lateFee}
-              onChange={(e) => setLateFee(e.target.value)}
-            />
-          </div>
+          {kind === 'policy' && (
+            <>
+              <div className="space-y-1.5">
+                <Label>GST (₹)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={penalty}
+                  onChange={(e) => setPenalty(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Late fee (₹)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={lateFee}
+                  onChange={(e) => setLateFee(e.target.value)}
+                />
+              </div>
+            </>
+          )}
           <div className="space-y-1.5 sm:col-span-2">
             <Label>Notes</Label>
             <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />

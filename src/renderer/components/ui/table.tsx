@@ -1,9 +1,17 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 
-export const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
-  ({ className, ...props }, ref) => (
-    <div className="relative w-full overflow-auto">
+// `wrapperClassName` reaches the scroll container around the table.
+// Passing e.g. `max-h-[65vh]` constrains the scroll viewport so the
+// horizontal scrollbar always sits at the bottom of the visible area
+// instead of floating off-screen at the bottom of long result sets.
+type TableProps = React.HTMLAttributes<HTMLTableElement> & {
+  wrapperClassName?: string;
+};
+
+export const Table = React.forwardRef<HTMLTableElement, TableProps>(
+  ({ className, wrapperClassName, ...props }, ref) => (
+    <div className={cn('relative w-full overflow-auto', wrapperClassName)}>
       <table ref={ref} className={cn('w-full caption-bottom text-sm', className)} {...props} />
     </div>
   ),
