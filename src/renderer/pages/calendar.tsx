@@ -11,7 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { ExternalLink, X as XIcon } from 'lucide-react';
+import { Check, ExternalLink, RotateCcw, X as XIcon } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -36,8 +36,11 @@ import {
   List as ListIcon,
   CalendarDays,
   CheckCircle2,
+  CheckSquare,
   FileSpreadsheet,
   Loader2,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import { useRouter } from '@/lib/router';
 import {
@@ -189,7 +192,7 @@ type CustomCategoryRow = { id: string; label: string; colorKey: string };
 
 export const CalendarPage = () => {
   const { navigate } = useRouter();
-  const [view, setView] = useState<'list' | 'calendar'>('calendar');
+  const [view, setView] = useState<'calendar' | 'list' | 'events'>('calendar');
 
   // Domain rows.
   const [events, setEvents] = useState<Event[]>([]);
@@ -427,6 +430,15 @@ export const CalendarPage = () => {
               <ListIcon className="h-3.5 w-3.5" />
               List
             </Button>
+            <Button
+              size="sm"
+              variant={view === 'events' ? 'default' : 'ghost'}
+              className="h-7"
+              onClick={() => setView('events')}
+            >
+              <CheckSquare className="h-3.5 w-3.5" />
+              Events
+            </Button>
           </div>
 
           <div className="relative min-w-56 flex-1">
@@ -571,6 +583,48 @@ export const CalendarPage = () => {
             navigate('/calendar/new');
           }}
         />
+      ) : view === 'events' ? (
+        <EventsView
+          events={filteredEvents}
+          customCategories={customCategories}
+          onMarkDone={async (id) => {
+            try {
+              await window.policyhub.calendar.markCompleted(id, isoToday());
+              toast.success('Marked completed');
+              await load();
+            } catch (err) {
+              toast.error('Save failed', { description: (err as Error).message });
+            }
+          }}
+          onSkip={async (id) => {
+            try {
+              await window.policyhub.calendar.markSkipped(id);
+              toast.success('Marked skipped');
+              await load();
+            } catch (err) {
+              toast.error('Save failed', { description: (err as Error).message });
+            }
+          }}
+          onReopen={async (id) => {
+            try {
+              await window.policyhub.calendar.markPending(id);
+              toast.success('Reopened');
+              await load();
+            } catch (err) {
+              toast.error('Save failed', { description: (err as Error).message });
+            }
+          }}
+          onEdit={(id) => navigate(`/calendar/${id}`)}
+          onDelete={async (id) => {
+            try {
+              await window.policyhub.calendar.remove(id);
+              toast.success('Event moved to Recycle Bin');
+              await load();
+            } catch (err) {
+              toast.error('Delete failed', { description: (err as Error).message });
+            }
+          }}
+        />
       ) : (
         // List view — calendar events only, with their own actions.
         <Card>
@@ -669,6 +723,36 @@ export const CalendarPage = () => {
         onOpen={(c) => {
           setPopupChip(null);
           navigate(c.navigateTo);
+        }}
+        onMarkDone={async (c) => {
+          try {
+            await window.policyhub.calendar.markCompleted(c.id, isoToday());
+            toast.success('Marked completed');
+            setPopupChip(null);
+            await load();
+          } catch (err) {
+            toast.error('Save failed', { description: (err as Error).message });
+          }
+        }}
+        onSkip={async (c) => {
+          try {
+            await window.policyhub.calendar.markSkipped(c.id);
+            toast.success('Marked skipped');
+            setPopupChip(null);
+            await load();
+          } catch (err) {
+            toast.error('Save failed', { description: (err as Error).message });
+          }
+        }}
+        onReopen={async (c) => {
+          try {
+            await window.policyhub.calendar.markPending(c.id);
+            toast.success('Reopened');
+            setPopupChip(null);
+            await load();
+          } catch (err) {
+            toast.error('Save failed', { description: (err as Error).message });
+          }
         }}
       />
     </div>
@@ -908,6 +992,232 @@ const CalendarGrid = ({
   );
 };
 
+// ---------------- Events view ----------------
+//
+// Cards grouped into sections — Overdue → This week → Upcoming →
+// Completed → Skipped. Each card has the title, category chip,
+// date, amount, status, and big inline action buttons so marking
+// done / skipping / editing / deleting are one click away.
+
+const EventsView = ({
+  events,
+  customCategories,
+  onMarkDone,
+  onSkip,
+  onReopen,
+  onEdit,
+  onDelete,
+}: {
+  events: Event[];
+  customCategories: CustomCategoryRow[];
+  onMarkDone: (id: string) => void;
+  onSkip: (id: string) => void;
+  onReopen: (id: string) => void;
+  onEdit: (id: string) => void;
+  onDelete: (id: string) => void;
+}) => {
+  const todayIso = isoToday();
+  const today = new Date(todayIso);
+  const in7 = new Date(today);
+  in7.setDate(today.getDate() + 7);
+  const in7Iso = in7.toISOString().slice(0, 10);
+
+  // Pre-sort once by date ascending, then bucket.
+  const sorted = [...events].sort((a, b) => a.eventDate.localeCompare(b.eventDate));
+
+  const overdue = sorted.filter(
+    (e) => e.status === 'pending' && e.eventDate < todayIso,
+  );
+  const thisWeek = sorted.filter(
+    (e) =>
+      e.status === 'pending' && e.eventDate >= todayIso && e.eventDate <= in7Iso,
+  );
+  const upcoming = sorted.filter(
+    (e) => e.status === 'pending' && e.eventDate > in7Iso,
+  );
+  // Completed / skipped — newest first so recent action shows up.
+  const completed = [...sorted].reverse().filter((e) => e.status === 'completed');
+  const skipped = [...sorted].reverse().filter((e) => e.status === 'skipped');
+
+  const colorFor = (e: Event): string => {
+    if (e.category !== 'other') return CATEGORY_DOT[e.category] ?? 'bg-slate-500';
+    const label = (e.customCategory ?? '').trim().toLowerCase();
+    if (label) {
+      const match = customCategories.find(
+        (c) => c.label.toLowerCase() === label,
+      );
+      if (match) return COLOR_KEY_TO_CLASS[match.colorKey] ?? 'bg-slate-500';
+    }
+    return CATEGORY_DOT.other;
+  };
+
+  const displayCat = (e: Event): string =>
+    e.category === 'other'
+      ? e.customCategory || 'Other'
+      : CATEGORY_LABELS[e.category] ?? e.category;
+
+  if (events.length === 0) {
+    return (
+      <Card>
+        <CardContent className="py-16 text-center text-sm text-muted-foreground">
+          No events match your filters. Use{' '}
+          <span className="font-medium text-foreground">New event</span> on the
+          top right to add one.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const renderCard = (e: Event) => {
+    const hasAmount = e.amount !== null && e.amount > 0;
+    const isDone = e.status === 'completed' || e.status === 'skipped';
+    return (
+      <div
+        key={e.id}
+        className={cn(
+          'rounded-lg border bg-card p-4 transition-shadow hover:shadow-sm',
+          isDone && 'opacity-60',
+        )}
+      >
+        <div className="flex flex-wrap items-start gap-3">
+          <span
+            className={cn(
+              'mt-1.5 h-3 w-3 shrink-0 rounded-full',
+              colorFor(e),
+            )}
+            aria-hidden
+          />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+              <h3
+                className={cn(
+                  'text-base font-semibold',
+                  isDone && 'line-through',
+                )}
+              >
+                {e.title}
+              </h3>
+              <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                {displayCat(e)}
+              </span>
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <span>
+                Due <span className="font-medium text-foreground">{formatDate(e.eventDate)}</span>
+              </span>
+              {hasAmount && (
+                <span>
+                  Amount{' '}
+                  <span className="font-medium text-foreground tabular-nums">
+                    {formatCurrencyPaise(e.amount as number)}
+                  </span>
+                </span>
+              )}
+              {e.isRecurring && (
+                <span>
+                  {e.frequency.replace('_', ' ')} · {e.occurrenceNo}/
+                  {e.occurrenceTotal}
+                </span>
+              )}
+              {statusBadge(e.status)}
+            </div>
+            {e.notes && (
+              <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
+                {e.notes}
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t pt-3">
+          {e.status === 'pending' ? (
+            <>
+              <Button size="sm" variant="outline" onClick={() => onSkip(e.id)}>
+                Skip
+              </Button>
+              <Button size="sm" onClick={() => onMarkDone(e.id)}>
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Mark done
+              </Button>
+            </>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => onReopen(e.id)}
+            >
+              Reopen
+            </Button>
+          )}
+          <Button
+            size="icon"
+            variant="ghost"
+            title="Edit event"
+            onClick={() => onEdit(e.id)}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            title="Delete (move to Recycle Bin)"
+            onClick={() => onDelete(e.id)}
+          >
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
+  const Section = ({
+    label,
+    tone,
+    items,
+  }: {
+    label: string;
+    tone?: 'danger' | 'warning' | 'success' | 'muted';
+    items: Event[];
+  }) => {
+    if (items.length === 0) return null;
+    const labelColor =
+      tone === 'danger'
+        ? 'text-destructive'
+        : tone === 'warning'
+          ? 'text-amber-600 dark:text-amber-400'
+          : tone === 'success'
+            ? 'text-emerald-600 dark:text-emerald-400'
+            : 'text-muted-foreground';
+    return (
+      <section className="space-y-2">
+        <h2
+          className={cn(
+            'flex items-center gap-2 text-xs font-semibold uppercase tracking-wide',
+            labelColor,
+          )}
+        >
+          {label}
+          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+            {items.length}
+          </span>
+        </h2>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {items.map(renderCard)}
+        </div>
+      </section>
+    );
+  };
+
+  return (
+    <div className="space-y-5">
+      <Section label="Overdue" tone="danger" items={overdue} />
+      <Section label="This week" tone="warning" items={thisWeek} />
+      <Section label="Upcoming" items={upcoming} />
+      <Section label="Completed" tone="success" items={completed} />
+      <Section label="Skipped" tone="muted" items={skipped} />
+    </div>
+  );
+};
+
 // ---------------- Calendar stats row ----------------
 
 const CalendarStats = ({
@@ -1034,15 +1344,24 @@ const ChipPopup = ({
   onClose,
   onOpen,
   onPickSibling,
+  onMarkDone,
+  onSkip,
+  onReopen,
 }: {
   chip: Chip | null;
   siblings: Chip[];
   onClose: () => void;
   onOpen: (c: Chip) => void;
   onPickSibling: (c: Chip) => void;
+  // Only relevant for calendar event chips — policies/MFs/repayments
+  // are marked complete via their own flows in their respective pages.
+  onMarkDone: (c: Chip) => void;
+  onSkip: (c: Chip) => void;
+  onReopen: (c: Chip) => void;
 }) => {
   if (!chip) return null;
   const hasAmount = chip.amount !== null && chip.amount > 0;
+  const isEvent = chip.kind === 'event';
   return (
     <Dialog open={Boolean(chip)} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-md">
@@ -1129,12 +1448,40 @@ const ChipPopup = ({
           </div>
         )}
 
-        <DialogFooter className="flex-row justify-end gap-2 sm:justify-end">
-          <Button variant="outline" size="sm" onClick={onClose}>
-            <XIcon className="h-3.5 w-3.5" />
-            Close
-          </Button>
-          <Button size="sm" onClick={() => onOpen(chip)}>
+        <DialogFooter className="flex flex-wrap justify-end gap-2 sm:justify-end">
+          {/* Event-specific quick actions. For policy / MF / repayment
+              chips the popup is purely informational + "Open" → users
+              mark those rows complete in their own pages. */}
+          {isEvent && !chip.isDone && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onSkip(chip)}
+              >
+                <XIcon className="h-3.5 w-3.5" />
+                Skip
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => onMarkDone(chip)}
+              >
+                <Check className="h-3.5 w-3.5" />
+                Mark done
+              </Button>
+            </>
+          )}
+          {isEvent && chip.isDone && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onReopen(chip)}
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Reopen
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={() => onOpen(chip)}>
             <ExternalLink className="h-3.5 w-3.5" />
             {KIND_OPEN_VERB[chip.kind]}
           </Button>
