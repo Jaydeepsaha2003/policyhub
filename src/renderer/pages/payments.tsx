@@ -77,16 +77,65 @@ const statusBadge = (s: 'pending' | 'paid' | 'overdue') =>
 
 export const PaymentsPage = () => {
   const { navigate } = useRouter();
+  // Filters are persisted in sessionStorage under this key so that
+  // navigating to a row's detail page and coming back doesn't reset the
+  // view. Cleared by the "Clear filters" button.
+  const FILTERS_KEY = 'payments.filters';
+  type StoredFilters = {
+    status?: string;
+    policyId?: string;
+    companyFilter?: string;
+    holderFilter?: string;
+    typeFilter?: string;
+    from?: string;
+    to?: string;
+  };
+  const readStored = (): StoredFilters => {
+    try {
+      const raw = sessionStorage.getItem(FILTERS_KEY);
+      return raw ? (JSON.parse(raw) as StoredFilters) : {};
+    } catch {
+      return {};
+    }
+  };
+  const stored = readStored();
+
   const [rows, setRows] = useState<Row[]>([]);
   const [mfRows, setMfRows] = useState<MfRow[]>([]);
   const [policies, setPolicies] = useState<PolicyLite[]>([]);
-  const [status, setStatus] = useState<string>('all');
-  const [policyId, setPolicyId] = useState<string>('all');
-  const [companyFilter, setCompanyFilter] = useState<string>('all');
-  const [holderFilter, setHolderFilter] = useState<string>('all');
-  const [typeFilter, setTypeFilter] = useState<string>('all'); // 'all' | 'policy' | 'mutual_fund'
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
+  const [status, setStatus] = useState<string>(stored.status ?? 'all');
+  const [policyId, setPolicyId] = useState<string>(stored.policyId ?? 'all');
+  const [companyFilter, setCompanyFilter] = useState<string>(
+    stored.companyFilter ?? 'all',
+  );
+  const [holderFilter, setHolderFilter] = useState<string>(
+    stored.holderFilter ?? 'all',
+  );
+  const [typeFilter, setTypeFilter] = useState<string>(stored.typeFilter ?? 'all');
+  const [from, setFrom] = useState(stored.from ?? '');
+  const [to, setTo] = useState(stored.to ?? '');
+
+  // Snapshot every filter change back to sessionStorage. Only the
+  // filter inputs are persisted — the data itself is always reloaded
+  // from disk on mount.
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(
+        FILTERS_KEY,
+        JSON.stringify({
+          status,
+          policyId,
+          companyFilter,
+          holderFilter,
+          typeFilter,
+          from,
+          to,
+        }),
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [status, policyId, companyFilter, holderFilter, typeFilter, from, to]);
   const [markId, setMarkId] = useState<string | null>(null);
   const [markKind, setMarkKind] = useState<'policy' | 'mutual_fund'>('policy');
   const [markDefault, setMarkDefault] = useState(0);
@@ -264,6 +313,11 @@ export const PaymentsPage = () => {
     setTypeFilter('all');
     setFrom('');
     setTo('');
+    try {
+      sessionStorage.removeItem(FILTERS_KEY);
+    } catch {
+      /* ignore */
+    }
   };
 
   // Filter-aware summary tiles. Counts and totals across whatever the user
@@ -575,6 +629,10 @@ export const PaymentsPage = () => {
           {filtered.length === 0 ? (
             <TableEmpty>No payments match these filters.</TableEmpty>
           ) : (
+            // Horizontal scroll for the extra columns; vertical scroll
+            // for long result sets so the table doesn't grow the page
+            // arbitrarily.
+            <div className="max-h-[65vh] overflow-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -591,6 +649,7 @@ export const PaymentsPage = () => {
                   <TableHead>Ref no</TableHead>
                   <TableHead className="text-right">GST + late fee</TableHead>
                   <TableHead className="text-right" />
+                  <TableHead>Company / Provider</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -698,6 +757,11 @@ export const PaymentsPage = () => {
                             </Button>
                           </div>
                         </TableCell>
+                        <TableCell>
+                          {p?.companyName ?? (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
                       </TableRow>
                     );
                   }
@@ -765,11 +829,13 @@ export const PaymentsPage = () => {
                           </Button>
                         )}
                       </TableCell>
+                      <TableCell>{r.provider}</TableCell>
                     </TableRow>
                   );
                 })}
               </TableBody>
             </Table>
+            </div>
           )}
         </CardContent>
       </Card>
