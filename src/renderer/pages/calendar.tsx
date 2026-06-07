@@ -577,12 +577,15 @@ export const CalendarPage = () => {
         </CardContent>
       </Card>
 
-      {/* Quick stats — events in the visible month + next 7-day outlook. */}
+      {/* Quick stats — events in the visible month + next 7-day outlook.
+          On Events view we narrow to calendar events only so the tiles
+          line up with what the user sees in the list. */}
       <CalendarStats
         year={year}
         month={month}
         events={events}
         chips={chips}
+        view={view}
       />
 
       {view === 'calendar' ? (
@@ -1258,19 +1261,26 @@ const CalendarStats = ({
   month,
   events,
   chips,
+  view,
 }: {
   year: number;
   month: number;
   events: Event[];
   chips: Chip[];
+  // On 'events' view we restrict every tile to calendar-event counts
+  // so the numbers match what the user actually sees in the list.
+  // On 'calendar' / 'list' view we keep the cross-source totals
+  // because the grid + overlay pills are visible.
+  view: 'calendar' | 'list' | 'events';
 }) => {
+  const eventsOnly = view === 'events';
+
   // First/last day of the displayed month.
   const monthStart = new Date(year, month, 1);
   const monthEnd = new Date(year, month + 1, 0);
   const monthStartIso = toLocalIso(monthStart);
   const monthEndIso = toLocalIso(monthEnd);
 
-  // Counts pulled from the *calendar events* domain only.
   const monthEvents = events.filter(
     (e) => e.eventDate >= monthStartIso && e.eventDate <= monthEndIso,
   );
@@ -1279,19 +1289,32 @@ const CalendarStats = ({
     (e) => e.status === 'completed',
   ).length;
 
-  // "Upcoming in next 7 days" counts every visible chip (events,
-  // premiums, MF SIPs, repayments, maturity) so the user sees the
-  // total upcoming workload regardless of source.
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const in7 = new Date(today);
   in7.setDate(today.getDate() + 7);
   const todayIso = toLocalIso(today);
   const in7Iso = toLocalIso(in7);
-  const upcoming7 = chips.filter(
+
+  // Events-only counts for the Events view.
+  const eventsUpcoming7 = events.filter(
+    (e) => e.status === 'pending' && e.eventDate >= todayIso && e.eventDate <= in7Iso,
+  );
+  const eventsOverdue = events.filter(
+    (e) => e.status === 'pending' && e.eventDate < todayIso,
+  );
+
+  // Cross-source counts for the Calendar / List view.
+  const chipsUpcoming7 = chips.filter(
     (c) => !c.isDone && c.date >= todayIso && c.date <= in7Iso,
   );
-  const overdueChips = chips.filter((c) => !c.isDone && c.date < todayIso);
+  const chipsOverdue = chips.filter((c) => !c.isDone && c.date < todayIso);
+
+  const upcomingCount = eventsOnly
+    ? eventsUpcoming7.length
+    : chipsUpcoming7.length;
+  const overdueCount = eventsOnly ? eventsOverdue.length : chipsOverdue.length;
+  const totalCount = eventsOnly ? events.length : chips.length;
 
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -1302,19 +1325,25 @@ const CalendarStats = ({
       />
       <StatTile
         label="Upcoming next 7 days"
-        value={String(upcoming7.length)}
-        sub="Across all sources"
+        value={String(upcomingCount)}
+        sub={eventsOnly ? 'Calendar events only' : 'Across all sources'}
         tone="info"
       />
       <StatTile
         label="Overdue"
-        value={String(overdueChips.length)}
-        sub={overdueChips.length === 0 ? 'Nothing past due' : 'Past due, not done'}
-        tone={overdueChips.length > 0 ? 'danger' : undefined}
+        value={String(overdueCount)}
+        sub={
+          overdueCount === 0
+            ? 'Nothing past due'
+            : eventsOnly
+              ? 'Past-due events only'
+              : 'Past due, not done · all sources'
+        }
+        tone={overdueCount > 0 ? 'danger' : undefined}
       />
       <StatTile
-        label="Total on screen"
-        value={String(chips.length)}
+        label={eventsOnly ? 'Total events' : 'Total on screen'}
+        value={String(totalCount)}
         sub={`${monthStart.toLocaleString('default', { month: 'short' })} ${year}`}
       />
     </div>
