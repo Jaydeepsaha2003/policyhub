@@ -1075,60 +1075,68 @@ const EventsView = ({
       <div
         key={e.id}
         className={cn(
-          'rounded-lg border bg-card p-4 transition-shadow hover:shadow-sm',
+          'flex flex-wrap items-center gap-4 rounded-lg border bg-card px-4 py-3 transition-shadow hover:shadow-sm',
           isDone && 'opacity-60',
         )}
       >
-        <div className="flex flex-wrap items-start gap-3">
-          <span
+        {/* Color dot */}
+        <span
+          className={cn('h-3 w-3 shrink-0 rounded-full', colorFor(e))}
+          aria-hidden
+        />
+
+        {/* Title + category — flex-1 so it absorbs leftover space */}
+        <div className="min-w-0 flex-1 basis-48">
+          <h3
             className={cn(
-              'mt-1.5 h-3 w-3 shrink-0 rounded-full',
-              colorFor(e),
+              'truncate text-sm font-semibold',
+              isDone && 'line-through',
             )}
-            aria-hidden
-          />
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-              <h3
-                className={cn(
-                  'text-base font-semibold',
-                  isDone && 'line-through',
-                )}
-              >
-                {e.title}
-              </h3>
-              <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                {displayCat(e)}
-              </span>
-            </div>
-            <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              <span>
-                Due <span className="font-medium text-foreground">{formatDate(e.eventDate)}</span>
-              </span>
-              {hasAmount && (
-                <span>
-                  Amount{' '}
-                  <span className="font-medium text-foreground tabular-nums">
-                    {formatCurrencyPaise(e.amount as number)}
-                  </span>
-                </span>
-              )}
-              {e.isRecurring && (
-                <span>
-                  {e.frequency.replace('_', ' ')} · {e.occurrenceNo}/
-                  {e.occurrenceTotal}
-                </span>
-              )}
-              {statusBadge(e.status)}
-            </div>
-            {e.notes && (
-              <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
-                {e.notes}
-              </p>
-            )}
+          >
+            {e.title}
+          </h3>
+          <div className="mt-0.5 truncate text-[11px] uppercase tracking-wide text-muted-foreground">
+            {displayCat(e)}
           </div>
         </div>
-        <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t pt-3">
+
+        {/* Due date — fixed-ish width column so dates line up */}
+        <div className="hidden min-w-[110px] text-xs sm:block">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Due
+          </div>
+          <div className="font-medium tabular-nums">
+            {formatDate(e.eventDate)}
+          </div>
+        </div>
+
+        {/* Amount — fixed-ish width column, right-aligned */}
+        <div className="hidden min-w-[100px] text-right text-xs md:block">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Amount
+          </div>
+          <div className="font-semibold tabular-nums">
+            {hasAmount ? formatCurrencyPaise(e.amount as number) : '—'}
+          </div>
+        </div>
+
+        {/* Recurring info */}
+        {e.isRecurring && (
+          <div className="hidden min-w-[110px] text-xs lg:block">
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              Recurrence
+            </div>
+            <div className="font-medium">
+              {e.frequency.replace('_', ' ')} · {e.occurrenceNo}/{e.occurrenceTotal}
+            </div>
+          </div>
+        )}
+
+        {/* Status badge */}
+        <div className="hidden lg:block">{statusBadge(e.status)}</div>
+
+        {/* Action buttons — pinned to the right */}
+        <div className="ml-auto flex shrink-0 items-center gap-1">
           {e.status === 'pending' ? (
             <>
               <Button size="sm" variant="outline" onClick={() => onSkip(e.id)}>
@@ -1140,11 +1148,7 @@ const EventsView = ({
               </Button>
             </>
           ) : (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => onReopen(e.id)}
-            >
+            <Button size="sm" variant="outline" onClick={() => onReopen(e.id)}>
               Reopen
             </Button>
           )}
@@ -1200,9 +1204,7 @@ const EventsView = ({
             {items.length}
           </span>
         </h2>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {items.map(renderCard)}
-        </div>
+        <div className="space-y-2">{items.map(renderCard)}</div>
       </section>
     );
   };
