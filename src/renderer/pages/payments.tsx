@@ -156,18 +156,12 @@ export const PaymentsPage = () => {
 
   const load = async () => {
     try {
+      // Fetch the full dataset (no server-side filters). All narrowing
+      // happens client-side so every dropdown can see every dimension
+      // when it computes its available options — Excel-style.
       const [p, mfp, pol]: any = await Promise.all([
-        window.policyhub.payments.listAll({
-          status: status === 'all' ? undefined : status,
-          policyId: policyId === 'all' ? undefined : policyId,
-          from: from || undefined,
-          to: to || undefined,
-        }),
-        window.policyhub.mfPayments.listAll({
-          status: status === 'all' ? undefined : status,
-          from: from || undefined,
-          to: to || undefined,
-        }),
+        window.policyhub.payments.listAll({}),
+        window.policyhub.mfPayments.listAll({}),
         window.policyhub.policies.list(),
       ]);
       setRows(p as Row[]);
@@ -187,60 +181,150 @@ export const PaymentsPage = () => {
 
   useEffect(() => {
     load();
+    // Filters are pure client-side now; load only on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, policyId, from, to, typeFilter]);
+  }, []);
 
   // Auto-refresh on window focus so the tab catches schedule changes
   // made elsewhere (policy edit / MF edit / bulk template upload /
-  // imported DB / reinstall). Also covers the case where the user
-  // alt-tabs back from another app after running an action.
+  // imported DB / reinstall).
   useEffect(() => {
     const onFocus = () => load();
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, policyId, from, to, typeFilter]);
+  }, []);
 
   const policyMap = useMemo(() => new Map(policies.map((p) => [p.id, p])), [policies]);
 
-  // Companies / holders for the filter dropdowns. Dynamically scoped
-  // by the Type filter so the choices match what's actually visible:
-  //   typeFilter='all'         → policy companies + MF providers
-  //   typeFilter='policy'      → policy companies only
-  //   typeFilter='mutual_fund' → MF providers only
-  const companies = useMemo(() => {
-    const set = new Set<string>();
-    if (typeFilter !== 'mutual_fund') {
-      for (const p of policies) set.add(p.companyName);
+  // Excel-style multi-filtering: each dropdown shows only values that
+  // exist in the row set AFTER applying every OTHER active filter.
+  // Pick Status=Overdue, the Company dropdown narrows to only the
+  // companies that have overdue rows; pick that company and the
+  // Holder list narrows again; and so on. The single source of truth
+  // is the unified `filterRows` array below.
+  type FilterRow = {
+    status: 'pending' | 'paid' | 'overdue';
+    kind: 'policy' | 'mutual_fund';
+    company: string;
+    holder: string;
+    policyId: string | null;
+    dueDate: string;
+  };
+  const filterRows = useMemo<FilterRow[]>(() => {
+    const out: FilterRow[] = [];
+    for (const r of rows) {
+      const p = policyMap.get(r.policyId);
+      out.push({
+        status: r.status,
+        kind: 'policy',
+        company: p?.companyName ?? '',
+        holder: p?.policyHolder ?? '',
+        policyId: r.policyId,
+        dueDate: r.dueDate,
+      });
     }
-    if (typeFilter !== 'policy') {
-      for (const m of mfRows) set.add(m.provider);
+    for (const m of mfRows) {
+      out.push({
+        status: m.status,
+        kind: 'mutual_fund',
+        company: m.provider,
+        holder: m.accountHolder,
+        policyId: null,
+        dueDate: m.dueDate,
+      });
     }
-    return Array.from(set).sort();
-  }, [policies, mfRows, typeFilter]);
+    return out;
+  }, [rows, mfRows, policyMap]);
 
-  const holders = useMemo(() => {
-    const set = new Set<string>();
-    if (typeFilter !== 'mutual_fund') {
-      for (const p of policies) {
-        if (companyFilter === 'all' || p.companyName === companyFilter) {
-          set.add(p.policyHolder);
-        }
-      }
-    }
-    if (typeFilter !== 'policy') {
-      for (const m of mfRows) {
-        if (companyFilter === 'all' || m.provider === companyFilter) {
-          set.add(m.accountHolder);
-        }
-      }
-    }
-    return Array.from(set).sort();
-  }, [policies, mfRows, companyFilter, typeFilter]);
+  // Dimension names used by `matches` to skip the filter being computed.
+  type FilterDim =
+    | 'status'
+    | 'typeFilter'
+    | 'companyFilter'
+    | 'holderFilter'
+    | 'policyId'
+    | 'dates';
 
-  // If the user flips the Type filter and the current Company/Holder
-  // selection isn't in the narrowed option set, snap back to 'all' so
-  // they don't end up with an empty table because of a stale filter.
+  const matches = (r: FilterRow, except: FilterDim | null): boolean => {
+    if (except !== 'status' && status !== 'all' && r.status !== status) return false;
+    if (except !== 'typeFilter' && typeFilter !== 'all' && r.kind !== typeFilter)
+      return false;
+    if (
+      except !== 'companyFilter' &&
+      companyFilter !== 'all' &&
+      r.company !== companyFilter
+    )
+      return false;
+    if (
+      except !== 'holderFilter' &&
+      holderFilter !== 'all' &&
+      r.holder !== holderFilter
+    )
+      return false;
+    if (except !== 'policyId' && policyId !== 'all' && r.policyId !== policyId)
+      return false;
+    if (except !== 'dates') {
+      if (from && r.dueDate < from) return false;
+      if (to && r.dueDate > to) return false;
+    }
+    return true;
+  };
+
+  const uniq = (xs: string[]): string[] =>
+    Array.from(new Set(xs.filter((x) => x !== ''))).sort();
+
+  // Each dropdown's available values: filterRows narrowed by every
+  // OTHER active filter, then collected.
+  const statusOptions = useMemo(
+    () => uniq(filterRows.filter((r) => matches(r, 'status')).map((r) => r.status)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filterRows, typeFilter, companyFilter, holderFilter, policyId, from, to],
+  );
+  const typeHasPolicy = useMemo(
+    () => filterRows.some((r) => r.kind === 'policy' && matches(r, 'typeFilter')),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filterRows, status, companyFilter, holderFilter, policyId, from, to],
+  );
+  const typeHasMf = useMemo(
+    () =>
+      filterRows.some((r) => r.kind === 'mutual_fund' && matches(r, 'typeFilter')),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filterRows, status, companyFilter, holderFilter, policyId, from, to],
+  );
+  const companies = useMemo(
+    () =>
+      uniq(
+        filterRows.filter((r) => matches(r, 'companyFilter')).map((r) => r.company),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filterRows, status, typeFilter, holderFilter, policyId, from, to],
+  );
+  const holders = useMemo(
+    () =>
+      uniq(
+        filterRows.filter((r) => matches(r, 'holderFilter')).map((r) => r.holder),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filterRows, status, typeFilter, companyFilter, policyId, from, to],
+  );
+  // Visible policies for the Policy dropdown — narrowed by every other
+  // active filter. MF rows have policyId=null so they're naturally
+  // excluded from this set.
+  const policyOptionIds = useMemo(
+    () =>
+      new Set(
+        filterRows
+          .filter((r) => r.policyId && matches(r, 'policyId'))
+          .map((r) => r.policyId as string),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filterRows, status, typeFilter, companyFilter, holderFilter, from, to],
+  );
+
+  // Defensive auto-reset: when an active filter selection no longer
+  // matches anything in the dataset (because *other* filters narrowed
+  // it out), snap back to 'all' so the table doesn't go silently empty.
   useEffect(() => {
     if (companyFilter !== 'all' && !companies.includes(companyFilter)) {
       setCompanyFilter('all');
@@ -251,13 +335,26 @@ export const PaymentsPage = () => {
       setHolderFilter('all');
     }
   }, [holders, holderFilter]);
-  // Specific Policy ID filter is meaningless when MF Only is selected —
-  // reset it so the MF rows can show.
+  useEffect(() => {
+    if (status !== 'all' && !statusOptions.includes(status)) {
+      setStatus('all');
+    }
+  }, [statusOptions, status]);
+  useEffect(() => {
+    if (typeFilter === 'policy' && !typeHasPolicy) setTypeFilter('all');
+    if (typeFilter === 'mutual_fund' && !typeHasMf) setTypeFilter('all');
+  }, [typeFilter, typeHasPolicy, typeHasMf]);
+  // Specific Policy ID filter is meaningless when MF Only is selected,
+  // and when other filters narrow it out of the visible set.
   useEffect(() => {
     if (typeFilter === 'mutual_fund' && policyId !== 'all') {
       setPolicyId('all');
+      return;
     }
-  }, [typeFilter, policyId]);
+    if (policyId !== 'all' && !policyOptionIds.has(policyId)) {
+      setPolicyId('all');
+    }
+  }, [typeFilter, policyId, policyOptionIds]);
 
   // Unified list with kind discriminator. Filters apply across both
   // sources. Sort by due date ASC so the oldest installment is at the
@@ -269,16 +366,25 @@ export const PaymentsPage = () => {
   // every list call (v0.4.7+), but this client-side fallback keeps the
   // status honest even between writes.
   const todayIso = new Date().toISOString().slice(0, 10);
+  // All filtering happens here now — server returns the full dataset
+  // and we apply status/type/company/holder/policy/date narrowing on
+  // top of the defensive overdue-flip.
   const filtered = useMemo<UnifiedRow[]>(() => {
     const out: UnifiedRow[] = [];
+    const dateMatches = (due: string): boolean =>
+      (!from || due >= from) && (!to || due <= to);
+
     if (typeFilter !== 'mutual_fund') {
       for (const r of rows) {
         const p = policyMap.get(r.policyId);
         if (companyFilter !== 'all' && p?.companyName !== companyFilter) continue;
         if (holderFilter !== 'all' && p?.policyHolder !== holderFilter) continue;
-        const status =
+        if (policyId !== 'all' && r.policyId !== policyId) continue;
+        if (!dateMatches(r.dueDate)) continue;
+        const effStatus =
           r.status === 'pending' && r.dueDate < todayIso ? 'overdue' : r.status;
-        out.push({ kind: 'policy', ...r, status });
+        if (status !== 'all' && effStatus !== status) continue;
+        out.push({ kind: 'policy', ...r, status: effStatus });
       }
     }
     if (typeFilter !== 'policy') {
@@ -287,14 +393,28 @@ export const PaymentsPage = () => {
         if (holderFilter !== 'all' && m.accountHolder !== holderFilter) continue;
         // A specific policyId filter excludes all MF rows.
         if (policyId !== 'all') continue;
-        const status =
+        if (!dateMatches(m.dueDate)) continue;
+        const effStatus =
           m.status === 'pending' && m.dueDate < todayIso ? 'overdue' : m.status;
-        out.push({ kind: 'mutual_fund', ...m, status });
+        if (status !== 'all' && effStatus !== status) continue;
+        out.push({ kind: 'mutual_fund', ...m, status: effStatus });
       }
     }
     out.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
     return out;
-  }, [rows, mfRows, policyMap, companyFilter, holderFilter, typeFilter, policyId, todayIso]);
+  }, [
+    rows,
+    mfRows,
+    policyMap,
+    status,
+    typeFilter,
+    companyFilter,
+    holderFilter,
+    policyId,
+    from,
+    to,
+    todayIso,
+  ]);
 
   const anyFilterActive =
     status !== 'all' ||
@@ -465,9 +585,15 @@ export const PaymentsPage = () => {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All status</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="overdue">Overdue</SelectItem>
-              <SelectItem value="paid">Paid</SelectItem>
+              {statusOptions.includes('pending') && (
+                <SelectItem value="pending">Pending</SelectItem>
+              )}
+              {statusOptions.includes('overdue') && (
+                <SelectItem value="overdue">Overdue</SelectItem>
+              )}
+              {statusOptions.includes('paid') && (
+                <SelectItem value="paid">Paid</SelectItem>
+              )}
             </SelectContent>
           </Select>
 
@@ -477,8 +603,8 @@ export const PaymentsPage = () => {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Policy + MF</SelectItem>
-              <SelectItem value="policy">Policy only</SelectItem>
-              <SelectItem value="mutual_fund">MF only</SelectItem>
+              {typeHasPolicy && <SelectItem value="policy">Policy only</SelectItem>}
+              {typeHasMf && <SelectItem value="mutual_fund">MF only</SelectItem>}
             </SelectContent>
           </Select>
 
@@ -525,11 +651,7 @@ export const PaymentsPage = () => {
               <SelectContent>
                 <SelectItem value="all">All policies</SelectItem>
                 {policies
-                  .filter(
-                    (p) =>
-                      (companyFilter === 'all' || p.companyName === companyFilter) &&
-                      (holderFilter === 'all' || p.policyHolder === holderFilter),
-                  )
+                  .filter((p) => policyOptionIds.has(p.id))
                   .map((p) => (
                     <SelectItem key={p.id} value={p.id}>
                       {p.policyNo} — {p.policyHolder}
