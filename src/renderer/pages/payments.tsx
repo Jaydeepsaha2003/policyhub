@@ -154,29 +154,61 @@ export const PaymentsPage = () => {
 
   const policyMap = useMemo(() => new Map(policies.map((p) => [p.id, p])), [policies]);
 
-  // Companies / holders for the filter dropdowns. Policies contribute company
-  // + holder; MFs contribute provider (as "company") + accountHolder.
+  // Companies / holders for the filter dropdowns. Dynamically scoped
+  // by the Type filter so the choices match what's actually visible:
+  //   typeFilter='all'         → policy companies + MF providers
+  //   typeFilter='policy'      → policy companies only
+  //   typeFilter='mutual_fund' → MF providers only
   const companies = useMemo(() => {
     const set = new Set<string>();
-    for (const p of policies) set.add(p.companyName);
-    for (const m of mfRows) set.add(m.provider);
+    if (typeFilter !== 'mutual_fund') {
+      for (const p of policies) set.add(p.companyName);
+    }
+    if (typeFilter !== 'policy') {
+      for (const m of mfRows) set.add(m.provider);
+    }
     return Array.from(set).sort();
-  }, [policies, mfRows]);
+  }, [policies, mfRows, typeFilter]);
 
   const holders = useMemo(() => {
     const set = new Set<string>();
-    for (const p of policies) {
-      if (companyFilter === 'all' || p.companyName === companyFilter) {
-        set.add(p.policyHolder);
+    if (typeFilter !== 'mutual_fund') {
+      for (const p of policies) {
+        if (companyFilter === 'all' || p.companyName === companyFilter) {
+          set.add(p.policyHolder);
+        }
       }
     }
-    for (const m of mfRows) {
-      if (companyFilter === 'all' || m.provider === companyFilter) {
-        set.add(m.accountHolder);
+    if (typeFilter !== 'policy') {
+      for (const m of mfRows) {
+        if (companyFilter === 'all' || m.provider === companyFilter) {
+          set.add(m.accountHolder);
+        }
       }
     }
     return Array.from(set).sort();
-  }, [policies, mfRows, companyFilter]);
+  }, [policies, mfRows, companyFilter, typeFilter]);
+
+  // If the user flips the Type filter and the current Company/Holder
+  // selection isn't in the narrowed option set, snap back to 'all' so
+  // they don't end up with an empty table because of a stale filter.
+  useEffect(() => {
+    if (companyFilter !== 'all' && !companies.includes(companyFilter)) {
+      setCompanyFilter('all');
+    }
+  }, [companies, companyFilter]);
+  useEffect(() => {
+    if (holderFilter !== 'all' && !holders.includes(holderFilter)) {
+      setHolderFilter('all');
+    }
+  }, [holders, holderFilter]);
+  // Specific Policy ID filter is meaningless when MF Only is selected —
+  // reset it so the MF rows can show.
+  useEffect(() => {
+    if (typeFilter === 'mutual_fund' && policyId !== 'all') {
+      setPolicyId('all');
+    }
+  }, [typeFilter, policyId]);
 
   // Unified list with kind discriminator. Filters apply across both
   // sources. Sort by due date ASC so the oldest installment is at the
@@ -398,10 +430,20 @@ export const PaymentsPage = () => {
 
           <Select value={companyFilter} onValueChange={(v) => { setCompanyFilter(v); setHolderFilter('all'); }}>
             <SelectTrigger className="w-44">
-              <SelectValue placeholder="Company" />
+              <SelectValue
+                placeholder={
+                  typeFilter === 'mutual_fund' ? 'Provider' : 'Company'
+                }
+              />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All companies</SelectItem>
+              <SelectItem value="all">
+                {typeFilter === 'mutual_fund'
+                  ? 'All providers'
+                  : typeFilter === 'policy'
+                    ? 'All companies'
+                    : 'All companies / providers'}
+              </SelectItem>
               {companies.map((c) => (
                 <SelectItem key={c} value={c}>{c}</SelectItem>
               ))}
@@ -420,19 +462,28 @@ export const PaymentsPage = () => {
             </SelectContent>
           </Select>
 
-          <Select value={policyId} onValueChange={setPolicyId}>
-            <SelectTrigger className="w-64">
-              <SelectValue placeholder="Policy" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All policies</SelectItem>
-              {policies.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.policyNo} — {p.policyHolder}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* Hidden when Type = MF Only since policies don't apply. */}
+          {typeFilter !== 'mutual_fund' && (
+            <Select value={policyId} onValueChange={setPolicyId}>
+              <SelectTrigger className="w-64">
+                <SelectValue placeholder="Policy" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All policies</SelectItem>
+                {policies
+                  .filter(
+                    (p) =>
+                      (companyFilter === 'all' || p.companyName === companyFilter) &&
+                      (holderFilter === 'all' || p.policyHolder === holderFilter),
+                  )
+                  .map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.policyNo} — {p.policyHolder}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          )}
 
           <DateInputDMY
             value={from}
