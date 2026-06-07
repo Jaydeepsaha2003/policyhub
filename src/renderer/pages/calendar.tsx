@@ -101,11 +101,21 @@ const displayCategory = (e: Event): string =>
     ? e.customCategory || 'Other'
     : CATEGORY_LABELS[e.category] ?? e.category;
 
-const statusBadge = (s: Event['status']) =>
+// Effective status for display — pending events whose date is in the
+// past show as Overdue. Stored DB status is unchanged.
+const effectiveEventStatus = (
+  e: Pick<Event, 'status' | 'eventDate'>,
+  todayIso: string,
+): 'pending' | 'overdue' | 'completed' | 'skipped' =>
+  e.status === 'pending' && e.eventDate < todayIso ? 'overdue' : e.status;
+
+const statusBadge = (s: 'pending' | 'overdue' | 'completed' | 'skipped') =>
   s === 'completed' ? (
     <Badge variant="success">Completed</Badge>
   ) : s === 'skipped' ? (
     <Badge variant="secondary">Skipped</Badge>
+  ) : s === 'overdue' ? (
+    <Badge variant="danger">Overdue</Badge>
   ) : (
     <Badge variant="warning">Pending</Badge>
   );
@@ -251,19 +261,35 @@ export const CalendarPage = () => {
     load();
   }, []);
 
-  // Calendar events after the page's filter inputs.
+  // Calendar events after the page's filter inputs. The Status filter
+  // treats "overdue" as a synthetic value (pending + past date) since
+  // the schema only stores pending/completed/skipped — the visual
+  // "overdue" elsewhere in the app is derived. Picking Pending shows
+  // only upcoming pending events; picking Overdue shows past-due
+  // pending ones. They're disjoint.
+  const todayIsoForFilter = new Date().toISOString().slice(0, 10);
   const filteredEvents = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return events.filter((r) => {
       if (categoryFilter !== 'all' && r.category !== categoryFilter) return false;
-      if (statusFilter !== 'all' && r.status !== statusFilter) return false;
+      if (statusFilter !== 'all') {
+        if (statusFilter === 'overdue') {
+          if (!(r.status === 'pending' && r.eventDate < todayIsoForFilter))
+            return false;
+        } else if (statusFilter === 'pending') {
+          if (!(r.status === 'pending' && r.eventDate >= todayIsoForFilter))
+            return false;
+        } else if (r.status !== statusFilter) {
+          return false;
+        }
+      }
       if (needle) {
         const hay = [r.title, displayCategory(r), r.notes ?? ''].join(' ').toLowerCase();
         if (!hay.includes(needle)) return false;
       }
       return true;
     });
-  }, [events, q, categoryFilter, statusFilter]);
+  }, [events, q, categoryFilter, statusFilter, todayIsoForFilter]);
 
   // Build a unified chip list from every enabled source.
   const chips = useMemo<Chip[]>(() => {
@@ -472,6 +498,7 @@ export const CalendarPage = () => {
             <SelectContent>
               <SelectItem value="all">All status</SelectItem>
               <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="overdue">Overdue</SelectItem>
               <SelectItem value="completed">Completed</SelectItem>
               <SelectItem value="skipped">Skipped</SelectItem>
             </SelectContent>
@@ -681,7 +708,9 @@ export const CalendarPage = () => {
                           <span className="text-muted-foreground">—</span>
                         )}
                       </TableCell>
-                      <TableCell>{statusBadge(e.status)}</TableCell>
+                      <TableCell>
+                        {statusBadge(effectiveEventStatus(e, isoToday()))}
+                      </TableCell>
                       <TableCell className="text-right">
                         {e.status === 'pending' && (
                           <Button
@@ -1133,7 +1162,9 @@ const EventsView = ({
         )}
 
         {/* Status badge */}
-        <div className="hidden lg:block">{statusBadge(e.status)}</div>
+        <div className="hidden lg:block">
+          {statusBadge(effectiveEventStatus(e, todayIso))}
+        </div>
 
         {/* Action buttons — pinned to the right */}
         <div className="ml-auto flex shrink-0 items-center gap-1">
