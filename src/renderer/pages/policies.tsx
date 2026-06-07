@@ -261,6 +261,31 @@ export const PoliciesPage = () => {
         </CardContent>
       </Card>
 
+      {/* Filtered count — shows N when nothing's narrowed, "N of M" when
+          filters narrow the result. Sits just above the table so it's
+          easy to spot. */}
+      <div className="flex items-center justify-between px-1 text-xs text-muted-foreground">
+        <span>
+          {filtered.length === rows.length ? (
+            <>
+              <span className="tabular-nums font-medium text-foreground">
+                {rows.length}
+              </span>{' '}
+              {rows.length === 1 ? 'policy' : 'policies'}
+            </>
+          ) : (
+            <>
+              Showing{' '}
+              <span className="tabular-nums font-medium text-foreground">
+                {filtered.length}
+              </span>{' '}
+              of{' '}
+              <span className="tabular-nums">{rows.length}</span> policies
+            </>
+          )}
+        </span>
+      </div>
+
       <Card>
         <CardContent className="p-0">
           {filtered.length === 0 ? (

@@ -233,6 +233,30 @@ export const MutualFundsPage = () => {
         </CardContent>
       </Card>
 
+      {/* Filtered count — at-a-glance signal of how many funds are
+          visible vs total. */}
+      <div className="flex items-center justify-between px-1 text-xs text-muted-foreground">
+        <span>
+          {filtered.length === rows.length ? (
+            <>
+              <span className="tabular-nums font-medium text-foreground">
+                {rows.length}
+              </span>{' '}
+              {rows.length === 1 ? 'fund' : 'funds'}
+            </>
+          ) : (
+            <>
+              Showing{' '}
+              <span className="tabular-nums font-medium text-foreground">
+                {filtered.length}
+              </span>{' '}
+              of{' '}
+              <span className="tabular-nums">{rows.length}</span> funds
+            </>
+          )}
+        </span>
+      </div>
+
       <Card>
         <CardContent className="p-0">
           {filtered.length === 0 ? (
